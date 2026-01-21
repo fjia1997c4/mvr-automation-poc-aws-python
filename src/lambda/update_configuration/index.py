@@ -257,13 +257,12 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             
                             if default_checksum == custom_checksum:
                                 # Default and Custom are same - create only v0 as active
-                                versioned_config = {
-                                    **default_data,
-                                    "IsActive": True,
-                                    "CreatedAt": timestamp,
-                                    "Description": "System default configuration (v0)"
+                                metadata_v0 = {
+                                    "is_active": True,
+                                    "created_at": timestamp,
+                                    "description": "System default configuration (v0)"
                                 }
-                                manager.save_configuration("v0", versioned_config)
+                                manager.save_configuration("v0", default_data, metadata=metadata_v0)
                                 logger.info("Default and Custom are identical - created v0 as active")
                                 
                                 # Clean up old entries
@@ -273,22 +272,20 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             else:
                                 # Default and Custom are different - create both v0 and v1
                                 # v0 (Default) - not active
-                                versioned_default = {
-                                    **default_data,
-                                    "IsActive": False,
-                                    "CreatedAt": timestamp,
-                                    "Description": "System default configuration (v0)"
+                                metadata_v0 = {
+                                    "is_active": False,
+                                    "created_at": timestamp,
+                                    "description": "System default configuration (v0)"
                                 }
-                                manager.save_configuration("v0", versioned_default)
+                                manager.save_configuration("v0", default_data, metadata=metadata_v0)
                                 
                                 # v1 (Custom) - active
-                                versioned_custom = {
-                                    **custom_data,
-                                    "IsActive": True,
-                                    "CreatedAt": timestamp,
-                                    "Description": "User customized configuration (v1)"
+                                metadata_v1 = {
+                                    "is_active": True,
+                                    "created_at": timestamp,
+                                    "description": "User customized configuration (v1)"
                                 }
-                                manager.save_configuration("v1", versioned_custom)
+                                manager.save_configuration("v1", custom_data, metadata=metadata_v1)
                                 logger.info("Default and Custom are different - created v0 and v1 (v1 active)")
                                 
                                 # Clean up old entries
@@ -297,13 +294,12 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                                 logger.info("Deleted old Default and Custom configurations")
                         else:
                             # Only Default exists - create v0 as active
-                            versioned_default = {
-                                **default_data,
-                                "IsActive": True,
-                                "CreatedAt": timestamp,
-                                "Description": "System default configuration (v0)"
+                            metadata_v0 = {
+                                "is_active": True,
+                                "created_at": timestamp,
+                                "description": "System default configuration (v0)"
                             }
-                            manager.save_configuration("v0", versioned_default)
+                            manager.save_configuration("v0", default_data, metadata=metadata_v0)
                             logger.info("Only Default exists - created v0 as active")
                             
                             # Clean up old Default entry
@@ -388,13 +384,12 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     import datetime
                     timestamp = datetime.datetime.utcnow().isoformat() + "Z"
                     
-                    versioned_config = {
-                        **config_data,
-                        "IsActive": True,
-                        "CreatedAt": timestamp,
-                        "Description": "System default configuration (v0)"
+                    metadata_v0 = {
+                        "is_active": True,
+                        "created_at": timestamp,
+                        "description": "System default configuration (v0)"
                     }
-                    manager.save_configuration("v0", versioned_config)
+                    manager.save_configuration("v0", config_data, metadata=metadata_v0)
                     logger.info("Created v0 from Default configuration for new stack")
                 else:
                     # Save other configurations (Schema, DefaultPricing) normally

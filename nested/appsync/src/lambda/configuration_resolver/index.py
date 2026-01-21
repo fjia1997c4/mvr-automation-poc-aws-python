@@ -826,16 +826,15 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
         else:
             config_data = configuration
         
-        # Add versioning metadata
-        versioned_config = {
-            **config_data,
-            "IsActive": set_as_active,
-            "CreatedAt": timestamp,
-            "Description": description or f"Configuration version {next_version}"
+        # Prepare metadata separately
+        metadata = {
+            "is_active": set_as_active,
+            "created_at": timestamp,
+            "description": description or f"Configuration version {next_version}"
         }
         
         # Save new version
-        manager.save_configuration(next_version, versioned_config)
+        manager.save_configuration(next_version, config_data, metadata=metadata)
         
         # If setting as active, deactivate other versions
         if set_as_active:

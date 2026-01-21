@@ -147,6 +147,7 @@ class ConfigurationManager:
         config_type: str,
         config: Union[SchemaConfig, IDPConfig, PricingConfig, Dict[str, Any]],
         skip_sync: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Save configuration to DynamoDB.
@@ -200,11 +201,30 @@ class ConfigurationManager:
                 # Save the synced custom config
                 self.save_configuration(CONFIG_TYPE_CUSTOM, new_custom, skip_sync=True)
 
-        # Create record
-        record = ConfigurationRecord(configuration_type=config_type, config=config)
+        # Create record with metadata
+        from .models import ConfigMetadata
+        
+        config_metadata = None
+        if metadata:
+            config_metadata = ConfigMetadata(**metadata)
+        
+        # Map configuration type for discriminated union
+        if config_type == CONFIG_TYPE_SCHEMA:
+            discriminator_type = "Schema"
+        elif config_type in (CONFIG_TYPE_DEFAULT_PRICING, CONFIG_TYPE_CUSTOM_PRICING):
+            discriminator_type = config_type  # "DefaultPricing" or "CustomPricing"
+        else:
+            # All version strings (v0, v1, etc.) use "Config" for discrimination
+            discriminator_type = "Config"
+            
+        record = ConfigurationRecord(
+            configuration_type=discriminator_type, 
+            config=config,
+            metadata=config_metadata
+        )
 
-        # Write to DynamoDB
-        self._write_record(record)
+        # Write to DynamoDB with original config_type as key
+        self._write_record(record, config_type)
 
         
 
@@ -452,13 +472,16 @@ class ConfigurationManager:
 
         return ConfigurationRecord.from_dynamodb_item(item)
 
-    def _write_record(self, record: ConfigurationRecord) -> None:
+    def _write_record(self, record: ConfigurationRecord, key: Optional[str] = None) -> None:
         """
         Write ConfigurationRecord to DynamoDB.
 
         Args:
             record: ConfigurationRecord to write
+            key: Optional custom key to use instead of record.configuration_type
         """
         item = record.to_dynamodb_item()
+        if key:
+            item["Configuration"] = key
         self.table.put_item(Item=item)
-        logger.info(f"Saved configuration: {record.configuration_type}")
+        logger.info(f"Saved configuration: {key or record.configuration_type}")

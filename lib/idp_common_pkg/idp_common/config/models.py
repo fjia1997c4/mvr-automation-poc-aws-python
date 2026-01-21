@@ -971,8 +971,8 @@ class IDPConfig(BaseModel):
             temperature = config.extraction.temperature
     """
 
-    config_type: Literal["Default", "Custom"] = Field(
-        default="Default", description="Discriminator for config type"
+    config_type: Literal["Schema", "Config", "Pricing"] = Field(
+        default="Config", description="Configuration type"
     )
 
     notes: Optional[str] = Field(default=None, description="Configuration notes")
@@ -1077,6 +1077,19 @@ class ConfigMetadata(BaseModel):
     created_at: Optional[str] = Field(default=None, description="Creation timestamp")
     updated_at: Optional[str] = Field(default=None, description="Update timestamp")
     version: Optional[str] = Field(default=None, description="Configuration version")
+    is_active: Optional[bool] = Field(default=None, description="Whether configuration is active")
+    description: Optional[str] = Field(default=None, description="Configuration description")
+
+
+def config_discriminator(v):
+    """Custom discriminator function for configuration types"""
+    if v == "Schema":
+        return "Schema"
+    elif v in ("DefaultPricing", "CustomPricing"):
+        return v
+    else:
+        # All version strings (v0, v1, v2, etc.) map to Config
+        return "Config"
 
 
 class ConfigurationRecord(BaseModel):
@@ -1106,9 +1119,9 @@ class ConfigurationRecord(BaseModel):
         description="Configuration type (Schema, Default, Custom, Pricing)"
     )
     config: Annotated[
-        Union[SchemaConfig, IDPConfig, PricingConfig], Discriminator("config_type")
+        Union[SchemaConfig, IDPConfig, PricingConfig], Discriminator("configuration_type")
     ] = Field(
-        description="The configuration - SchemaConfig for Schema type, PricingConfig for Pricing type, IDPConfig for Default/Custom"
+        description="The configuration - SchemaConfig for Schema type, PricingConfig for Pricing type, IDPConfig for versioned types"
     )
     metadata: Optional[ConfigMetadata] = Field(
         default=None, description="Optional metadata about the configuration"
@@ -1140,6 +1153,20 @@ class ConfigurationRecord(BaseModel):
 
         # Build DynamoDB item
         item = {"Configuration": self.configuration_type, **stringified}
+        
+        # Add metadata fields as separate DynamoDB columns
+        if self.metadata:
+            metadata_dict = self.metadata.model_dump(mode="python", exclude_none=True)
+            if "is_active" in metadata_dict:
+                item["IsActive"] = metadata_dict["is_active"]
+            if "created_at" in metadata_dict:
+                item["CreatedAt"] = metadata_dict["created_at"]
+            if "updated_at" in metadata_dict:
+                item["UpdatedAt"] = metadata_dict["updated_at"]
+            if "version" in metadata_dict:
+                item["Version"] = metadata_dict["version"]
+            if "description" in metadata_dict:
+                item["Description"] = metadata_dict["description"]
 
         return item
 
@@ -1176,9 +1203,9 @@ class ConfigurationRecord(BaseModel):
         config_data = {k: v for k, v in item.items() if k != "Configuration"}
 
         # Set config_type discriminator directly from DynamoDB Configuration key
-        # DynamoDB keys match Pydantic discriminators exactly:
+        # DynamoDB keys match Pydantic discriminators:
         # - "Schema" -> SchemaConfig
-        # - "Default", "Custom" -> IDPConfig  
+        # - "v0", "v1", "v2", etc. -> IDPConfig  
         # - "DefaultPricing", "CustomPricing" -> PricingConfig
         config_data["config_type"] = config_type
 
