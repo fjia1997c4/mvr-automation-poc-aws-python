@@ -130,10 +130,10 @@ def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix
         try:
             source_key = f"{source_prefix}{filename}"
             dest_key = f"{dest_prefix}{filename}"
-        if config_version:
-            dest_key = f"{dest_key}.{config_version}"
+            if config_version:
+                dest_key = f"{dest_key}.{config_version}"
             
-            # Copy file with metadata
+            # Copy file
             copy_args = {
                 'CopySource': {'Bucket': source_bucket, 'Key': source_key},
                 'Bucket': dest_bucket,
