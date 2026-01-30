@@ -614,6 +614,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       }
     }
 
+    // If config is wrapped in a "Config" object, extract it
+    if (parsedConfig && parsedConfig.Config && typeof parsedConfig.Config === 'object') {
+      parsedConfig = parsedConfig.Config;
+    }
+
     // Deep merge helper function
     const deepMerge = (target, source) => {
       const output = { ...target };
