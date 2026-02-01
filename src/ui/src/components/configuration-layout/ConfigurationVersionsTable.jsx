@@ -67,16 +67,18 @@ const ConfigurationVersionsTable = ({
             onVersionSelect?.(item.versionId);
           }}
         >
-          {item.versionId}
+          <Box fontWeight={item.isActive ? 'bold' : 'normal'} color={item.isActive ? 'text-status-success' : 'inherit'}>
+            {item.versionId}
+            {item.isActive ? ' (Active)' : ''}
+          </Box>
         </Link>
       ),
       sortingField: 'versionId',
     },
     {
-      id: 'isActive',
-      header: 'Active',
-      cell: (item) => (item.isActive ? <Badge color="green">Active</Badge> : null),
-      width: 100,
+      id: 'description',
+      header: 'Description',
+      cell: (item) => item.description || '-',
     },
     {
       id: 'createdAt',
@@ -89,11 +91,6 @@ const ConfigurationVersionsTable = ({
       header: 'Updated',
       cell: (item) => (item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'),
       sortingField: 'updatedAt',
-    },
-    {
-      id: 'description',
-      header: 'Description',
-      cell: (item) => item.description || '-',
     },
   ];
 

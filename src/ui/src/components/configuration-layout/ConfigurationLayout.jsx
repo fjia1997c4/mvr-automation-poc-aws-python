@@ -307,6 +307,7 @@ const ConfigurationLayout = () => {
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
   const [extractionSchema, setExtractionSchema] = useState(null);
+  const [ruleSchema, setRuleSchema] = useState(null);
   const [newVersionDescription, setNewVersionDescription] = useState('');
 
   // Configuration Library state
@@ -314,6 +315,7 @@ const ConfigurationLayout = () => {
   const [showImportAsNewVersionModal, setShowImportAsNewVersionModal] = useState(false);
   const [importedConfigForNewVersion, setImportedConfigForNewVersion] = useState(null);
   const [showLibraryBrowserModal, setShowLibraryBrowserModal] = useState(false);
+  const [libraryImportContext, setLibraryImportContext] = useState('current'); // 'current' or 'new'
   const [showReadmeModal, setShowReadmeModal] = useState(false);
   const [libraryConfigs, setLibraryConfigs] = useState([]);
   const [selectedLibraryConfig, setSelectedLibraryConfig] = useState(null);
@@ -332,6 +334,9 @@ const ConfigurationLayout = () => {
 
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
+
+  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
+  const isPattern2 = settings?.IDPPattern?.includes('Pattern2');
 
   // Validate the current content based on view mode
   const validateCurrentContent = () => {
@@ -377,7 +382,7 @@ const ConfigurationLayout = () => {
     }
   };
 
-  // Create merged config (similar to develop branch)
+  // Create merged config (same pattern as develop branch)
   const mergedConfig = useMemo(() => {
     if (!selectedVersionData) return null;
 
@@ -385,11 +390,8 @@ const ConfigurationLayout = () => {
       // For v0 or when v0 isn't loaded, use the selected version directly
       return selectedVersionData.configuration;
     } else {
-      // Merge v0 (defaults) with selected version (overrides)
-      return {
-        ...defaultVersionData.configuration,
-        ...selectedVersionData.configuration,
-      };
+      // Merge v0 (defaults) with selected version (overrides) using deepMerge
+      return deepMerge(defaultVersionData.configuration, selectedVersionData.configuration);
     }
   }, [selectedVersionData, defaultVersionData, selectedVersion]);
 
@@ -520,6 +522,13 @@ const ConfigurationLayout = () => {
           setExtractionSchema([]);
         }
 
+        // Initialize rule schema from config (stored in rule_classes field)
+        if (config.rule_classes) {
+          setRuleSchema(config.rule_classes);
+        } else {
+          setRuleSchema([]);
+        }
+
         // Update editor content
         const jsonString = JSON.stringify(config, null, 2);
         setJsonContent(jsonString);
@@ -573,6 +582,7 @@ const ConfigurationLayout = () => {
     setJsonContent('');
     setYamlContent('');
     setExtractionSchema(null);
+    setRuleSchema(null);
     setSaveError(null);
     setSaveSuccess(false);
   };
@@ -611,12 +621,12 @@ const ConfigurationLayout = () => {
   };
 
   // Handle file import for new version
-  const handleImportFileForNewVersion = (event) => {
+  const handleImportFileForNewVersion = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target.result;
         let config;
@@ -627,11 +637,31 @@ const ConfigurationLayout = () => {
           config = JSON.parse(content);
         }
 
+        // Ensure v0 is loaded for merging
+        let v0Data = defaultVersionData;
+        if (!v0Data) {
+          try {
+            const v0Response = await fetchVersion('v0');
+            if (v0Response && v0Response.configuration) {
+              let v0Config;
+              if (typeof v0Response.configuration === 'string') {
+                v0Config = JSON.parse(v0Response.configuration);
+              } else {
+                v0Config = v0Response.configuration;
+              }
+              v0Data = { ...v0Response, configuration: v0Config };
+              setDefaultVersionData(v0Data);
+            }
+          } catch (error) {
+            console.warn('Could not load v0 for merging:', error);
+          }
+        }
+
         // Merge with v0 defaults to fill missing fields
         let configToImport = config;
-        if (defaultVersionData && defaultVersionData.configuration) {
+        if (v0Data && v0Data.configuration) {
           configToImport = {
-            ...defaultVersionData.configuration,
+            ...v0Data.configuration,
             ...config,
           };
         }
@@ -870,7 +900,7 @@ const ConfigurationLayout = () => {
   };
 
   // Handle import
-  const handleImport = (event) => {
+  const handleImport = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -883,11 +913,43 @@ const ConfigurationLayout = () => {
         const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
         if (importedConfig && typeof importedConfig === 'object') {
-          setFormValues(importedConfig);
-          setJsonContent(JSON.stringify(importedConfig, null, 2));
-          setYamlContent(yaml.dump(importedConfig));
-          if (importedConfig.classes) {
-            setExtractionSchema(importedConfig.classes);
+          // Ensure v0 is loaded for merging
+          let v0Data = defaultVersionData;
+          if (!v0Data) {
+            try {
+              const v0Response = await fetchVersion('v0');
+              if (v0Response && v0Response.configuration) {
+                let v0Config;
+                if (typeof v0Response.configuration === 'string') {
+                  v0Config = JSON.parse(v0Response.configuration);
+                } else {
+                  v0Config = v0Response.configuration;
+                }
+                v0Data = { ...v0Response, configuration: v0Config };
+                setDefaultVersionData(v0Data);
+              }
+            } catch (error) {
+              console.warn('Could not load v0 for merging:', error);
+            }
+          }
+
+          // Merge with v0 defaults to fill missing fields
+          let configToImport = importedConfig;
+          if (v0Data && v0Data.configuration) {
+            configToImport = {
+              ...v0Data.configuration,
+              ...importedConfig,
+            };
+          }
+
+          setFormValues(configToImport);
+          setJsonContent(JSON.stringify(configToImport, null, 2));
+          setYamlContent(yaml.dump(configToImport));
+          if (configToImport.classes) {
+            setExtractionSchema(configToImport.classes);
+          }
+          if (configToImport.rule_classes) {
+            setRuleSchema(configToImport.rule_classes);
           }
           setImportSuccess(true);
         } else {
@@ -912,9 +974,10 @@ const ConfigurationLayout = () => {
     document.getElementById('import-file').click();
   };
 
-  // Handler for config library import
-  const handleConfigLibraryImport = async () => {
+  // Handler for config library import for current version
+  const handleConfigLibraryImportForCurrentVersion = async () => {
     setShowImportSourceModal(false);
+    setLibraryImportContext('current');
     setLibraryLoading(true);
 
     try {
@@ -930,6 +993,99 @@ const ConfigurationLayout = () => {
       setShowLibraryBrowserModal(true);
     } catch (error) {
       setSaveError(`Failed to load configuration library: ${error.message}`);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  // Handler for config library import for new version
+  const handleConfigLibraryImport = async () => {
+    setLibraryImportContext('new');
+    setLibraryLoading(true);
+
+    try {
+      // Determine pattern based on settings
+      const pattern = settings?.IDPPattern?.includes('Pattern1')
+        ? 'pattern-1'
+        : settings?.IDPPattern?.includes('Pattern3')
+        ? 'pattern-3'
+        : 'pattern-2';
+
+      const configs = await listConfigurations(pattern);
+      setLibraryConfigs(configs);
+      setShowLibraryBrowserModal(true);
+    } catch (error) {
+      setSaveError(`Failed to load configuration library: ${error.message}`);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  // Handler for selecting a library configuration for current version
+  const handleLibraryConfigSelectForCurrentVersion = async (configName) => {
+    setShowLibraryBrowserModal(false);
+    setLibraryLoading(true);
+
+    try {
+      // Determine pattern based on settings
+      const pattern = settings?.IDPPattern?.includes('Pattern1')
+        ? 'pattern-1'
+        : settings?.IDPPattern?.includes('Pattern3')
+        ? 'pattern-3'
+        : 'pattern-2';
+
+      const configFile = await getFile(pattern, configName, 'config.yaml');
+
+      if (configFile && configFile.content) {
+        // Parse YAML content
+        const importedConfig = yaml.load(configFile.content);
+
+        if (importedConfig && typeof importedConfig === 'object') {
+          // Ensure v0 is loaded for merging
+          let v0Data = defaultVersionData;
+          if (!v0Data) {
+            try {
+              const v0Response = await fetchVersion('v0');
+              if (v0Response && v0Response.configuration) {
+                let v0Config;
+                if (typeof v0Response.configuration === 'string') {
+                  v0Config = JSON.parse(v0Response.configuration);
+                } else {
+                  v0Config = v0Response.configuration;
+                }
+                v0Data = { ...v0Response, configuration: v0Config };
+                setDefaultVersionData(v0Data);
+              }
+            } catch (error) {
+              console.warn('Could not load v0 for merging:', error);
+            }
+          }
+
+          // Merge with v0 defaults to fill missing fields
+          let configToImport = importedConfig;
+          if (v0Data && v0Data.configuration) {
+            configToImport = {
+              ...v0Data.configuration,
+              ...importedConfig,
+            };
+          }
+
+          setFormValues(configToImport);
+          setJsonContent(JSON.stringify(configToImport, null, 2));
+          setYamlContent(yaml.dump(configToImport));
+          if (configToImport.classes) {
+            setExtractionSchema(configToImport.classes);
+          }
+          if (configToImport.rule_classes) {
+            setRuleSchema(configToImport.rule_classes);
+          }
+          setImportSuccess(true);
+        } else {
+          setImportError('Invalid configuration file format');
+        }
+      }
+    } catch (error) {
+      setImportError(`Failed to load configuration: ${error.message}`);
     } finally {
       setLibraryLoading(false);
     }
@@ -964,7 +1120,9 @@ const ConfigurationLayout = () => {
           }
 
           setImportedConfigForNewVersion(configToImport);
-          setNewVersionDescription(configName);
+          // Use just the base name without path for description
+          const baseName = configName.split('/').pop();
+          setNewVersionDescription(baseName);
           setShowLibraryBrowserModal(false);
         } else {
           setImportError('Invalid configuration file format');
@@ -1319,6 +1477,22 @@ const ConfigurationLayout = () => {
                   extractionSchema={extractionSchema}
                   isCustomized={isCustomized}
                   onResetToDefault={handleFieldResetToDefault}
+                  showRuleSchema={isPattern2}
+                  ruleSchema={ruleSchema}
+                  onRuleSchemaChange={(schemaData, isDirty) => {
+                    setRuleSchema(schemaData);
+                    if (isDirty) {
+                      const updatedConfig = { ...formValues };
+                      // CRITICAL: Always set rule_classes, even if empty array
+                      if (schemaData === null) {
+                        updatedConfig.rule_classes = [];
+                      } else if (Array.isArray(schemaData)) {
+                        // Store as 'rule_classes' field with JSON Schema content
+                        updatedConfig.rule_classes = schemaData;
+                      }
+                      setFormValues(updatedConfig);
+                    }
+                  }}
                   onSchemaChange={(schemaData, isDirty) => {
                     setExtractionSchema(schemaData);
                   }}
@@ -1337,6 +1511,9 @@ const ConfigurationLayout = () => {
                       setFormValues(parsed);
                       if (parsed.classes) {
                         setExtractionSchema(parsed.classes);
+                      }
+                      if (parsed.rule_classes) {
+                        setRuleSchema(parsed.rule_classes);
                       }
                       try {
                         const yamlString = yaml.dump(parsed);
@@ -1375,6 +1552,9 @@ const ConfigurationLayout = () => {
                         setFormValues(parsed);
                         if (parsed.classes) {
                           setExtractionSchema(parsed.classes);
+                        }
+                        if (parsed.rule_classes) {
+                          setRuleSchema(parsed.rule_classes);
                         }
                         const jsonString = JSON.stringify(parsed, null, 2);
                         setJsonContent(jsonString);
@@ -1506,6 +1686,9 @@ const ConfigurationLayout = () => {
         <SpaceBetween size="l">
           <Button variant="primary" onClick={handleLocalFileImport} iconName="upload" fullWidth>
             Import from Local File
+          </Button>
+          <Button onClick={handleConfigLibraryImportForCurrentVersion} iconName="folder" fullWidth>
+            Import from Configuration Library
           </Button>
         </SpaceBetween>
       </Modal>
@@ -1774,7 +1957,15 @@ const ConfigurationLayout = () => {
                   header: 'Actions',
                   cell: (item) => (
                     <SpaceBetween direction="horizontal" size="xs">
-                      <Button variant="primary" size="small" onClick={() => handleLibraryConfigSelect(item.name)}>
+                      <Button
+                        variant="primary"
+                        size="small"
+                        onClick={() =>
+                          libraryImportContext === 'new'
+                            ? handleLibraryConfigSelect(item.name)
+                            : handleLibraryConfigSelectForCurrentVersion(item.name)
+                        }
+                      >
                         Import
                       </Button>
                       {item.hasReadme && (
