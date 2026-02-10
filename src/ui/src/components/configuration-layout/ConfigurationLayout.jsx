@@ -148,7 +148,7 @@ const ConfigurationLayout = () => {
   const handleVersionSelect = async (versionName) => {
     logger.info('Selecting version:', versionName);
     setSelectedVersion(versionName);
-    // TODO: Load selected version data into form
+    await fetchConfiguration(versionName); // Load selected version data into form
   };
 
   // Handle version selection for comparison
@@ -198,6 +198,12 @@ const ConfigurationLayout = () => {
     try {
       await setActiveVersion(versionName);
       await fetchVersions(); // Refresh table
+
+      // Small delay to ensure backend consistency before fetching config
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      await fetchConfiguration(versionName); // Reload form with activated version's config
+      setSelectedVersion(versionName); // Select the activated version in the table
     } catch (error) {
       console.error('Failed to activate version:', error);
     }
@@ -205,6 +211,7 @@ const ConfigurationLayout = () => {
 
   // Handle import as new version
   const handleImportAsNewVersion = () => {
+    setImportError(null); // Clear any previous errors
     setShowImportSourceModal(true);
   };
 
@@ -220,7 +227,13 @@ const ConfigurationLayout = () => {
 
       logger.info(`Creating version from ${importSource || 'unknown'}: ${versionName} with description: "${description}"`);
       logger.info('Version creation params:', { versionName, description, hasConfig: !!importedConfigForNewVersion });
-      await saveAsNewVersion(importedConfigForNewVersion, versionName, description);
+
+      const result = await saveAsNewVersion(importedConfigForNewVersion, versionName, description);
+
+      if (!result.success) {
+        setImportError(result.error || 'Failed to create version from import');
+        return;
+      }
 
       // Small delay to ensure backend consistency before fetching
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -273,6 +286,7 @@ const ConfigurationLayout = () => {
   const [showSaveAsVersionModal, setShowSaveAsVersionModal] = useState(false);
   const [saveAsVersionName, setSaveAsVersionName] = useState('');
   const [saveAsVersionDescription, setSaveAsVersionDescription] = useState('');
+  const [saveAsVersionError, setSaveAsVersionError] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState(currentVersionName || 'configuration');
@@ -1102,9 +1116,10 @@ const ConfigurationLayout = () => {
           console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
         }
 
-        // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
+        // CRITICAL: If there are no differences AND no schema changes AND no description changes, don't send update to backend
         // This prevents unnecessary API calls and potential data issues
-        if (Object.keys(builtObject).length === 0) {
+        const descriptionChanged = versionDescription !== (currentVersion?.description || '');
+        if (Object.keys(builtObject).length === 0 && !descriptionChanged) {
           console.log('No changes detected, skipping save');
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
@@ -1116,6 +1131,7 @@ const ConfigurationLayout = () => {
         console.log('Saving customized config:', configToSave);
       }
 
+      console.log('Save parameters:', { currentVersionName, configToSave, versionDescription });
       const success = await updateConfiguration(currentVersionName, configToSave, versionDescription);
 
       if (success) {
@@ -1123,6 +1139,8 @@ const ConfigurationLayout = () => {
         if (saveAsDefault) {
           setShowSaveAsDefaultModal(false);
         }
+        // Refresh versions list after successful save
+        await fetchVersions();
       } else {
         setSaveError('Failed to save configuration. Please try again.');
       }
@@ -1256,9 +1274,9 @@ const ConfigurationLayout = () => {
         builtObject.rule_classes = formValues.rule_classes;
       }
 
-      const success = await updateConfiguration(saveAsVersionName, builtObject, saveAsVersionDescription, true);
+      const result = await saveAsNewVersion(builtObject, saveAsVersionName, saveAsVersionDescription);
 
-      if (success) {
+      if (result.success) {
         setSaveSuccess(true);
         setShowSaveAsVersionModal(false);
         setSaveAsVersionName('');
@@ -1269,7 +1287,7 @@ const ConfigurationLayout = () => {
         await fetchVersions();
         await fetchConfiguration(saveAsVersionName);
       } else {
-        setSaveError('Failed to save as version. Please try again.');
+        setSaveAsVersionError(result.error || 'Failed to save as version. Please try again.');
       }
     } catch (err) {
       console.error('Save as version error:', err);
@@ -1743,9 +1761,9 @@ const ConfigurationLayout = () => {
         }
       >
         <SpaceBetween size="m">
-          {saveError && (
-            <Alert type="error" header="Error">
-              {saveError}
+          {saveAsVersionError && (
+            <Alert type="error" dismissible onDismiss={() => setSaveAsVersionError(null)} header="Error">
+              {saveAsVersionError}
             </Alert>
           )}
           <FormField
@@ -1853,7 +1871,10 @@ const ConfigurationLayout = () => {
       {/* Import Source Selection Modal */}
       <Modal
         visible={showImportSourceModal}
-        onDismiss={() => setShowImportSourceModal(false)}
+        onDismiss={() => {
+          setImportError(null);
+          setShowImportSourceModal(false);
+        }}
         header="Import as New Version"
         footer={
           <Box float="right">
@@ -1994,7 +2015,8 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
-                <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)}>
+                {/* Disable Save as default when already on default version */}
+                <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)} disabled={currentVersionName === 'default'}>
                   Save as default
                 </Button>
                 <Button
@@ -2004,18 +2026,19 @@ const ConfigurationLayout = () => {
                 >
                   Save as Version
                 </Button>
+                {/* Disable Save changes when on default version */}
                 <Button
                   variant="primary"
                   onClick={() => handleSave(false)}
                   loading={isSaving}
-                  disabled={!hasUnsavedChanges || validationErrors.length > 0}
+                  disabled={!hasUnsavedChanges || validationErrors.length > 0 || currentVersionName === 'default'}
                 >
                   Save changes
                 </Button>
               </SpaceBetween>
             }
           >
-            Configuration ({selectedVersion || activeVersionName})
+            Configuration: {selectedVersion || (activeVersionName && currentVersion?.isActive ? `${activeVersionName} (Active)` : activeVersionName)}{currentVersion?.description ? ` - ${currentVersion.description}` : ''}
           </Header>
         }
       >
@@ -2044,12 +2067,6 @@ const ConfigurationLayout = () => {
           {saveError && (
             <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
               {saveError}
-            </Alert>
-          )}
-
-          {importError && (
-            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import error">
-              {importError}
             </Alert>
           )}
 
@@ -2269,6 +2286,11 @@ const ConfigurationLayout = () => {
         }
       >
         <SpaceBetween size="m">
+          {importError && (
+            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import Error">
+              {importError}
+            </Alert>
+          )}
           <Alert type="success" header="Configuration Loaded">
             Configuration successfully loaded and ready to be saved as a new version.
           </Alert>

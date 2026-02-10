@@ -3,7 +3,7 @@
 
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Table, Box, SpaceBetween, Badge, Link, Button, Header, Pagination, TextFilter } from '@cloudscape-design/components';
+import { Table, Box, SpaceBetween, Badge, Link, Button, Header, Pagination, TextFilter, Alert } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 
 const ConfigurationVersionsTable = ({
@@ -21,6 +21,8 @@ const ConfigurationVersionsTable = ({
   // Log the versions data to console for debugging
   console.log('ConfigurationVersionsTable - versions data:', versions);
   console.log('ConfigurationVersionsTable - loading:', loading);
+
+  const [deleteError, setDeleteError] = useState(null);
 
   const columnDefinitions = [
     {
@@ -136,6 +138,11 @@ const ConfigurationVersionsTable = ({
 
   return (
     <SpaceBetween size="s">
+      {deleteError && (
+        <Alert type="error" dismissible onDismiss={() => setDeleteError(null)} header="Cannot Delete Version">
+          {deleteError}
+        </Alert>
+      )}
       <Table
         {...collectionProps}
         columnDefinitions={columnDefinitions}
@@ -175,14 +182,22 @@ const ConfigurationVersionsTable = ({
               </Button>
               <Button
                 variant="primary"
-                onClick={() => onDeleteVersions?.(selectedVersionsForCompare)}
-                disabled={
-                  selectedVersionsForCompare.length === 0 ||
-                  selectedVersionsForCompare.some((vId) => {
+                onClick={() => {
+                  // Check if any selected versions are active or default
+                  const activeVersions = selectedVersionsForCompare.filter((vId) => {
                     const version = versions.find((v) => v.versionName === vId);
                     return version?.isActive || vId === 'default';
-                  })
-                }
+                  });
+
+                  if (activeVersions.length > 0) {
+                    setDeleteError(`Cannot delete active or default versions: ${activeVersions.join(', ')}`);
+                    return;
+                  }
+
+                  setDeleteError(null);
+                  onDeleteVersions?.(selectedVersionsForCompare);
+                }}
+                disabled={selectedVersionsForCompare.length === 0}
               >
                 Delete Selected ({selectedVersionsForCompare.length})
               </Button>

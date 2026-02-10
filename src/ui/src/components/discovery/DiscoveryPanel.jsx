@@ -34,7 +34,7 @@ const client = generateClient();
 
 const DiscoveryPanel = () => {
   const { settings } = useSettingsContext();
-  const { versions, loading: versionsLoading } = useConfigurationVersions();
+  const { versions, loading: versionsLoading, getVersionOptions } = useConfigurationVersions();
   const [documentFile, setDocumentFile] = useState(null);
   const [groundTruthFile, setGroundTruthFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -52,14 +52,15 @@ const DiscoveryPanel = () => {
     if (versions.length > 0 && !selectedVersion) {
       const activeVersion = versions.find((version) => version.isActive);
       if (activeVersion) {
-        const versionOption = {
-          label: `${activeVersion.versionName} (Active)`,
-          value: activeVersion.versionName,
-        };
-        setSelectedVersion(versionOption);
+        // Use the same logic as getVersionOptions to ensure consistency
+        const versionOptions = getVersionOptions();
+        const activeVersionOption = versionOptions.find((option) => option.value === activeVersion.versionName);
+        if (activeVersionOption) {
+          setSelectedVersion(activeVersionOption);
+        }
       }
     }
-  }, [versions, selectedVersion]);
+  }, [versions, selectedVersion, getVersionOptions]);
 
   // Debounced status update to prevent rapid DOM changes
   const debouncedSetUploadStatus = useCallback((statusArray) => {
@@ -499,10 +500,7 @@ const DiscoveryPanel = () => {
             <Select
               selectedOption={selectedVersion}
               onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
-              options={versions.map((version) => ({
-                label: version.isActive ? `${version.versionName} (Active)` : version.versionName,
-                value: version.versionName,
-              }))}
+              options={getVersionOptions()}
               placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}
               disabled={isUploading || versionsLoading || versions.length === 0}
               loadingText="Loading versions..."

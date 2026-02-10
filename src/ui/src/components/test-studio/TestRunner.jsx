@@ -22,21 +22,22 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { versions, loading: versionsLoading } = useConfigurationVersions();
+  const { versions, loading: versionsLoading, getVersionOptions } = useConfigurationVersions();
 
   // Set default to active version when versions are loaded
   React.useEffect(() => {
     if (versions.length > 0 && !selectedVersion) {
       const activeVersion = versions.find((v) => v.isActive);
       if (activeVersion) {
-        const versionOption = {
-          label: `${activeVersion.versionName} (Active)`,
-          value: activeVersion.versionName,
-        };
-        setSelectedVersion(versionOption);
+        // Use the same logic as getVersionOptions to ensure consistency
+        const versionOptions = getVersionOptions();
+        const activeVersionOption = versionOptions.find((option) => option.value === activeVersion.versionName);
+        if (activeVersionOption) {
+          setSelectedVersion(activeVersionOption);
+        }
       }
     }
-  }, [versions, selectedVersion]);
+  }, [versions, selectedVersion, getVersionOptions]);
 
   // Set default context when test set, version, or numberOfFiles changes
   React.useEffect(() => {
@@ -202,10 +203,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
           <Select
             selectedOption={selectedVersion}
             onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
-            options={versions.map((version) => ({
-              label: version.isActive ? `${version.versionName} (Active)` : version.versionName,
-              value: version.versionName,
-            }))}
+            options={getVersionOptions()}
             placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}
             disabled={loading || versions.length === 0}
             loadingText="Loading versions..."

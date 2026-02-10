@@ -190,14 +190,16 @@ class ConfigurationManager:
                 if not existing_record:
                     # New version - set creation time
                     item["CreatedAt"] = current_time
+                    item["UpdatedAt"] = current_time
                     item["IsActive"] = False  # New versions are not active by default
+                    # Set description (empty string if None provided)
+                    item["Description"] = description if description is not None else ""
+                else: # existing record
+                    # Always update the modification time
+                    item["UpdatedAt"] = current_time
+                    if description is not None:
+                        item["Description"] = description
                 
-                # Always update the modification time
-                item["UpdatedAt"] = current_time
-                
-                # Set description (empty string if None provided)
-                item["Description"] = description if description is not None else ""
-            
             stringified = ConfigurationRecord._stringify_values(config_dict)
             item.update(stringified)
 
@@ -308,7 +310,6 @@ class ConfigurationManager:
         version: Optional[str] = None,
         description: Optional[str] = None,
         skip_sync: bool = False,
-        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Save configuration to DynamoDB.
@@ -374,7 +375,6 @@ class ConfigurationManager:
             # get existing record if saving existing version
             existing_record = self._read_record(CONFIG_TYPE_CONFIG, version)
             is_active_status = existing_record.is_active if existing_record else False
-
             # update meta
             import datetime
             timestamp = datetime.datetime.utcnow().isoformat() + "Z"
@@ -385,27 +385,30 @@ class ConfigurationManager:
                     "created_at": existing_record.metadata.created_at if existing_record.metadata else timestamp,
                     "updated_at": timestamp
                 }
+                # Create record
+                record = ConfigurationRecord(
+                    configuration_type=config_type,
+                    version=version,
+                    is_active=is_active_status,  # Preserve existing active status or None for new
+                    description=description if description else existing_record.description,
+                    config=config,
+                    metadata=ConfigMetadata(**metadata)
+                )
             else:
                 # New config - set both timestamps
                 metadata = {
                     "created_at": timestamp,
                     "updated_at": timestamp
                 }
-        
-            # Create record with metadata
-            config_metadata = None
-            if metadata:
-                config_metadata = ConfigMetadata(**metadata)
-
-            # Create record
-            record = ConfigurationRecord(
-                configuration_type=config_type,
-                version=version,
-                is_active=is_active_status,  # Preserve existing active status or None for new
-                description=description,
-                config=config,
-                metadata=config_metadata
-            )
+                # Create record
+                record = ConfigurationRecord(
+                    configuration_type=config_type,
+                    version=version,
+                    is_active=is_active_status,  # Preserve existing active status or None for new
+                    description=description,
+                    config=config,
+                    metadata=ConfigMetadata(**metadata)
+                )
         else:
             # Create record
             record = ConfigurationRecord(configuration_type=config_type, config=config)
@@ -770,7 +773,7 @@ class ConfigurationManager:
                 )
 
             # Save ONLY the sparse Custom deltas (NO Pydantic defaults!)
-            self.save_raw_configuration(CONFIG_TYPE_CONFIG, existing_version_dict, version, description=description)
+            self.save_raw_configuration(CONFIG_TYPE_CONFIG, config_dict=existing_version_dict, version = version, description=description)
             logger.info("Updated Custom configuration by merging deltas (sparse save)")
 
         return True

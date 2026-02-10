@@ -444,10 +444,10 @@ def handler(event: Dict[str, Any], context: Any) -> None:
 
         if request_type in ["Create", "Update"]:
             # Check for legacy migration on Update requests
-            migration_performed = False
+            version_migration_performed = False
             if request_type == "Update":
-                migration_performed = detect_and_migrate_legacy_format()
-                if migration_performed:
+                version_migration_performed = detect_and_migrate_legacy_format()
+                if version_migration_performed:
                     logger.info("Legacy migration completed, using direct DynamoDB operations for remaining processing")
             
             # Collect all configurations to process
@@ -539,7 +539,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     config_data = config_info["config"]
                     version = config_name
                     
-                    if migration_performed:
+                    if version_migration_performed:
                         # Use direct DynamoDB operations when migration was performed
                         # Only update timestamp since record already exists from migration
                         metadata = {"updated_at": current_time}
@@ -555,16 +555,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             pass
                         
                         if existing_config:
-                            metadata = {"updated_at": current_time}
-                            manager.save_configuration("Config", config_data, version=version, metadata=metadata)
+                            manager.save_configuration("Config", config_data, version=version)
                         else:
-                            metadata = {"created_at": current_time, "updated_at": current_time}
                             description = "System default" if version == "default" else ""
-                            manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
+                            manager.save_configuration("Config", config_data, version=version, description=description)
                         logger.info(f"Updated config version: {version} configuration")
                 else:
                     # Non-versioned configurations (Schema, DefaultPricing)
-                    if migration_performed:
+                    if version_migration_performed:
                         # Use direct DynamoDB operations when migration was performed
                         save_configuration_bypass_manager(config_name, config_info)
                         logger.info(f"Updated {config_name} configuration during migration")

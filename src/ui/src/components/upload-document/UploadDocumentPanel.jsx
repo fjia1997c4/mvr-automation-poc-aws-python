@@ -27,7 +27,7 @@ const client = generateClient();
 
 const UploadDocumentPanel = () => {
   const { settings } = useSettingsContext();
-  const { versions } = useConfigurationVersions();
+  const { versions, getVersionOptions } = useConfigurationVersions();
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState([]);
@@ -40,14 +40,15 @@ const UploadDocumentPanel = () => {
     if (versions.length > 0 && !selectedVersion) {
       const activeVersion = versions.find((v) => v.isActive);
       if (activeVersion) {
-        const versionOption = {
-          label: `${activeVersion.versionName} (Active)`,
-          value: activeVersion.versionName,
-        };
-        setSelectedVersion(versionOption);
+        // Use the same logic as getVersionOptions to ensure consistency
+        const versionOptions = getVersionOptions();
+        const activeVersionOption = versionOptions.find((option) => option.value === activeVersion.versionName);
+        if (activeVersionOption) {
+          setSelectedVersion(activeVersionOption);
+        }
       }
     }
-  }, [versions, selectedVersion]);
+  }, [versions, selectedVersion, getVersionOptions]);
 
   if (!settings.InputBucket) {
     return (
@@ -185,10 +186,7 @@ const UploadDocumentPanel = () => {
           <Select
             selectedOption={selectedVersion}
             onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
-            options={versions.map((version) => ({
-              label: version.isActive ? `${version.versionName} (Active)` : version.versionName,
-              value: version.versionName,
-            }))}
+            options={getVersionOptions()}
             placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}
             disabled={isUploading || versions.length === 0}
             loadingText="Loading versions..."

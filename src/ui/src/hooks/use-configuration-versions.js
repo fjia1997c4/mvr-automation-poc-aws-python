@@ -106,6 +106,23 @@ const useConfigurationVersions = () => {
 
   const saveAsNewVersion = async (configuration, versionName, description) => {
     try {
+      // Check if version name is "default"
+      if (versionName === 'default') {
+        return {
+          success: false,
+          error: 'Cannot create version "default" - this name is reserved. Please use a different name.',
+        };
+      }
+
+      // Check if version name conflicts with active version
+      const activeVersion = versions.find((v) => v.isActive);
+      if (activeVersion && versionName === activeVersion.versionName) {
+        return {
+          success: false,
+          error: `Cannot create version "${versionName}" - this name is already used by the active version. Please change the active version first or use a different name.`,
+        };
+      }
+
       // Add saveAsVersion flag to the configuration
       const configWithFlag = {
         ...configuration,
@@ -161,6 +178,21 @@ const useConfigurationVersions = () => {
     fetchVersions();
   }, []);
 
+  // Utility function to generate version options for Select components
+  const getVersionOptions = () => {
+    return versions.map((version) => {
+      const truncatedDescription =
+        version.description && version.description.length > 50 ? `${version.description.substring(0, 50)}...` : version.description;
+
+      return {
+        label: version.isActive
+          ? `${version.versionName} (Active)${truncatedDescription ? ` - ${truncatedDescription}` : ''}`
+          : `${version.versionName}${truncatedDescription ? ` - ${truncatedDescription}` : ''}`,
+        value: version.versionName,
+      };
+    });
+  };
+
   return {
     versions,
     loading,
@@ -169,6 +201,7 @@ const useConfigurationVersions = () => {
     fetchVersion,
     setActiveVersion,
     saveAsNewVersion,
+    getVersionOptions,
     deleteVersion,
   };
 };
