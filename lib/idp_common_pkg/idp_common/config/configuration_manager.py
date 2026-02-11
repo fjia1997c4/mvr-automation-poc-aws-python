@@ -263,7 +263,7 @@ class ConfigurationManager:
         logger.info("Merged default + version configurations for runtime")
         return IDPConfig(**merged_dict)
 
-
+    
     def sync_custom_with_new_default(
         self, old_default: IDPConfig, new_default: IDPConfig, old_custom: IDPConfig
     ) -> IDPConfig:
@@ -304,6 +304,7 @@ class ConfigurationManager:
         deep_update(new_custom_dict, user_customizations)
 
         return IDPConfig(**new_custom_dict)
+
 
     def save_configuration(
         self,
@@ -356,22 +357,25 @@ class ConfigurationManager:
             versions = self.list_config_versions()
             for version_dict in versions:
                 version_name: Optional[str] = str(version_dict.get("versionName")) if version_dict.get("versionName") else None
-                old_version = self.get_configuration(CONFIG_TYPE_CONFIG, version=version_name)
+                # CRITICAL: Use RAW Custom (no Pydantic defaults!) to preserve sparse delta pattern
+                old_version = self.get_raw_configuration(CONFIG_TYPE_CONFIG, version=version_name)
                 if (
                     old_default
-                    and version_name
-                    and version_name != DEFAULT_VERSION
+                    and old_version
+                    and version_name != DEFAULT_VERSION # sync non default version's only
                     and isinstance(old_default, IDPConfig)
-                    and isinstance(old_version, IDPConfig)
                 ):
                     logger.info(
-                        f"Syncing Version: {version_name} config with new Default while preserving user customizations"
+                        f"Syncing Version: {version_name} config with new Default while preserving user customizations (sparse)"
                     )
-                    new_version = self.sync_custom_with_new_default(
+                    new_version = self._sync_custom_with_new_default_sparse(
                         old_default, config, old_version
                     )
-                    # Save the synced version config
-                    self.save_configuration(CONFIG_TYPE_CONFIG, new_version, version=version_name, skip_sync=True)
+                    # Save ONLY the sparse Custom deltas (NO Pydantic defaults!)
+                    if new_version:
+                        self.save_raw_configuration(CONFIG_TYPE_CONFIG, new_version, version=version)
+                    else:
+                        self.save_raw_configuration(CONFIG_TYPE_CONFIG, None, version=version)
 
         if config_type == CONFIG_TYPE_CONFIG:
             # get existing record if saving existing version
@@ -790,6 +794,54 @@ class ConfigurationManager:
             logger.info("Updated Custom configuration by merging deltas (sparse save)")
 
         return True
+    
+    # ===== Private Methods =====
+
+    def _sync_custom_with_new_default_sparse(
+        self,
+        old_default: IDPConfig,
+        new_default: IDPConfig,
+        old_custom_dict: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Sync Custom config when Default is updated, preserving sparse delta pattern.
+
+        CRITICAL: This method preserves the sparse delta pattern by:
+        1. Taking the RAW old_custom_dict (NOT Pydantic-validated)
+        2. Returning ONLY customizations that still differ from new_default
+
+        Algorithm:
+        1. Get old_default and new_default as dicts
+        2. For each field in old_custom_dict:
+           - If value differs from new_default, keep it in result
+           - If value equals new_default, drop it (no longer a customization)
+        3. Return sparse delta dict (only actual customizations)
+
+        Args:
+            old_default: Previous default configuration (Pydantic model)
+            new_default: New default configuration being saved (Pydantic model)
+            old_custom_dict: RAW custom config dict (sparse deltas only!)
+
+        Returns:
+            New sparse custom dict with only fields that differ from new_default
+        """
+        from copy import deepcopy
+
+        old_default_dict = old_default.model_dump(mode="python")
+        new_default_dict = new_default.model_dump(mode="python")
+
+        # Start with a copy of existing Custom deltas
+        new_custom_dict = deepcopy(old_custom_dict)
+
+        # Strip any values that now match the new Default
+        # This ensures Custom only contains actual customizations
+        strip_matching_defaults(new_custom_dict, new_default_dict)
+
+        logger.info(
+            f"Synced Custom config (sparse): preserved {len(new_custom_dict)} top-level customizations"
+        )
+
+        return new_custom_dict
 
 
     def _read_record(self, configuration_type: str, version: str = "") -> Optional[ConfigurationRecord]:
