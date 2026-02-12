@@ -629,14 +629,18 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             # For Create: Activate custom if Custom was provided, otherwise default if Default provided
             if request_type == "Create":
                 try:
-                    if "custom" in configurations:
+                    # Check for custom configuration (Config#custom#...)
+                    custom_configs = [key for key in configurations.keys() if key.startswith("Config#custom#")]
+                    default_configs = [key for key in configurations.keys() if key.startswith("Config#default#")]
+                    
+                    if custom_configs:
                         manager.activate_version("custom")
-                        logger.info("Activated custom version)")
-                    elif "default" in configurations:
+                        logger.info("Activated custom version")
+                    elif default_configs:
                         manager.activate_version("default")
                         logger.info("Activated default version")
                 except Exception as e:
-                    logger.error(f"Error activating version during create, error :{e}")
+                    logger.error(f"Error activating version during create, error: {e}")
                     
             cfnresponse.send(
                 event,
