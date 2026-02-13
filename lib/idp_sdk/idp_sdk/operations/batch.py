@@ -303,6 +303,11 @@ class BatchOperation:
             for doc in status_data.get(category, []):
                 start_time = doc.get("start_time") or None
                 end_time = doc.get("end_time") or None
+                # Convert empty strings to None for datetime fields
+                if start_time == "":
+                    start_time = None
+                if end_time == "":
+                    end_time = None
                 documents.append(
                     DocumentStatus(
                         document_id=doc.get("document_id", ""),

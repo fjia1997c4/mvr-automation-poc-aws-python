@@ -109,11 +109,18 @@ class DocumentOperation:
         for category in ["completed", "running", "queued", "failed"]:
             for doc in status_data.get(category, []):
                 if doc.get("document_id") == document_id:
+                    start_time = doc.get("start_time")
+                    end_time = doc.get("end_time")
+                    # Convert empty strings to None for datetime fields
+                    if start_time == "":
+                        start_time = None
+                    if end_time == "":
+                        end_time = None
                     return DocumentStatus(
                         document_id=doc.get("document_id", ""),
                         status=doc.get("status", "UNKNOWN"),
-                        start_time=doc.get("start_time"),
-                        end_time=doc.get("end_time"),
+                        start_time=start_time,
+                        end_time=end_time,
                         duration_seconds=doc.get("duration"),
                         num_pages=doc.get("num_pages"),
                         num_sections=doc.get("num_sections"),

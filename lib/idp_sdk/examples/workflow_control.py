@@ -102,8 +102,8 @@ def main():
 
         batches = client.batch.list(limit=args.limit)
 
-        print(f"\nFound {len(batches)} batches:")
-        for batch in batches:
+        print(f"\nFound {batches.count} batches:")
+        for batch in batches.batches:
             print(f"\n  Batch: {batch.batch_id}")
             print(f"    Documents: {len(batch.document_ids)}")
             print(f"    Queued: {batch.queued}")
