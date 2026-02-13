@@ -145,7 +145,7 @@ def main():
         print(f"  Features: {args.features}")
         print(f"  Pattern: {args.pattern}")
 
-        result = client.config_create(
+        result = client.config.create(
             features=args.features,
             pattern=args.pattern,
             output=args.output,
@@ -170,7 +170,7 @@ def main():
         print(f"Validating configuration: {args.config_file}")
         print(f"  Pattern: {args.pattern}")
 
-        result = client.config_validate(
+        result = client.config.validate(
             config_file=args.config_file,
             pattern=args.pattern,
             show_merged=args.show_merged,
@@ -204,7 +204,7 @@ def main():
         if hasattr(args, "config_version") and args.config_version:
             print(f"  Version: {args.config_version}")
 
-        result = client.config_download(
+        result = client.config.download(
             output=args.output,
             format=args.format,
             config_version=getattr(args, "config_version", None),
@@ -235,7 +235,7 @@ def main():
         if hasattr(args, "description") and args.description:
             print(f"  Description: {args.description}")
 
-        result = client.config_upload(
+        result = client.config.upload(
             config_file=args.config_file,
             validate=not args.no_validate,
             config_version=getattr(args, "config_version", None),

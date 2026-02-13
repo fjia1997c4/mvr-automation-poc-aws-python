@@ -17,10 +17,28 @@ from typing import Dict, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from .manifest_parser import parse_manifest
-from .stack_info import StackInfo
+from idp_sdk.core.manifest_parser import parse_manifest
+from idp_sdk.core.stack_info import StackInfo
 
 logger = logging.getLogger(__name__)
+
+
+class BatchListDict(dict):
+    """Dict that acts like a list when iterated for backward compatibility"""
+
+    def __iter__(self):
+        """Iterate over batches instead of dict keys"""
+        return iter(self.get("batches", []))
+
+    def __len__(self):
+        """Return count of batches"""
+        return self.get("count", 0)
+
+    def __getitem__(self, key):
+        """Support both dict access and list indexing"""
+        if isinstance(key, int):
+            return self.get("batches", [])[key]
+        return super().__getitem__(key)
 
 
 class BatchProcessor:
@@ -731,29 +749,44 @@ class BatchProcessor:
             logger.error(f"Error retrieving batch metadata: {e}")
             return None
 
-    def list_batches(self, limit: int = 10) -> List[Dict]:
+    def list_batches(self, limit: int = 10, next_token: Optional[str] = None):
         """
-        List recent batch jobs
+        List recent batch jobs with pagination
 
         Args:
             limit: Maximum number of batches to return
+            next_token: Pagination token from previous request
 
         Returns:
-            List of batch metadata dictionaries
+            BatchListDict that acts like both dict and list for backward compatibility
         """
         output_bucket = self.resources["OutputBucket"]
         prefix = "cli-batches/"
 
         try:
-            response = self.s3.list_objects_v2(
-                Bucket=output_bucket, Prefix=prefix, Delimiter="/"
-            )
+            # Build list parameters
+            list_params = {
+                "Bucket": output_bucket,
+                "Prefix": prefix,
+                "Delimiter": "/",
+                "MaxKeys": limit,
+            }
+
+            # Add continuation token if provided
+            if next_token:
+                import base64
+
+                decoded = base64.b64decode(next_token).decode("utf-8")
+                list_params["ContinuationToken"] = decoded
+
+            # List batch directories
+            response = self.s3.list_objects_v2(**list_params)
 
             # Get batch directories
             batch_prefixes = [p["Prefix"] for p in response.get("CommonPrefixes", [])]
 
             # Sort by name (which includes timestamp) - most recent first
-            batch_prefixes = sorted(batch_prefixes, reverse=True)[:limit]
+            batch_prefixes = sorted(batch_prefixes, reverse=True)
 
             # Load metadata for each batch
             batches = []
@@ -763,11 +796,23 @@ class BatchProcessor:
                 if batch_info:
                     batches.append(batch_info)
 
-            return batches
+            # Prepare result dict
+            result = {"batches": batches, "count": len(batches)}
+
+            # Add next_token if more results available
+            if response.get("IsTruncated"):
+                import base64
+
+                encoded = base64.b64encode(
+                    response["NextContinuationToken"].encode("utf-8")
+                ).decode("utf-8")
+                result["next_token"] = encoded
+
+            return BatchListDict(result)
 
         except Exception as e:
             logger.error(f"Error listing batches: {e}")
-            return []
+            return BatchListDict({"batches": [], "count": 0})
 
     def download_batch_results(
         self, batch_id: str, output_dir: str, file_types: List[str]

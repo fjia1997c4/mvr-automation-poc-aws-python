@@ -16,15 +16,15 @@ from typing import Optional
 
 import boto3
 import click
+from idp_sdk.core.batch_processor import BatchProcessor
+from idp_sdk.core.manifest_parser import validate_manifest
+from idp_sdk.core.progress_monitor import ProgressMonitor
+from idp_sdk.core.stack import StackDeployer, build_parameters
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
 from . import display
-from .batch_processor import BatchProcessor
-from .deployer import StackDeployer, build_parameters
-from .manifest_parser import validate_manifest
-from .progress_monitor import ProgressMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -961,7 +961,7 @@ def delete_documents_cmd(
             sys.exit(1)
 
         # Get stack resources
-        from .stack_info import StackInfo
+        from idp_sdk.core.stack_info import StackInfo
 
         console.print(f"[bold blue]Connecting to stack: {stack_name}[/bold blue]")
         stack_info = StackInfo(stack_name, region)
@@ -1159,7 +1159,7 @@ def rerun_inference(
             )
             sys.exit(1)
 
-        from .rerun_processor import RerunProcessor
+        from idp_sdk.core.rerun_processor import RerunProcessor
 
         # Initialize processor
         console.print(
@@ -1413,7 +1413,7 @@ def run_inference(
 
             # Validate number_of_files against manifest size
             if number_of_files is not None:
-                from .manifest_parser import parse_manifest
+                from idp_sdk.core.manifest_parser import parse_manifest
 
                 documents = parse_manifest(manifest)
                 if number_of_files > len(documents):
@@ -1927,8 +1927,7 @@ def generate_manifest(
         s3_client = None
         if test_set:
             import boto3
-
-            from .stack_info import StackInfo
+            from idp_sdk.core.stack_info import StackInfo
 
             stack_info = StackInfo(stack_name, region)
             resources = stack_info.get_resources()
@@ -2675,7 +2674,7 @@ def stop_workflows(
       idp-cli stop-workflows --stack-name my-stack --skip-purge
     """
     try:
-        from .stop_workflows import WorkflowStopper
+        from idp_sdk.core.stop_workflows import WorkflowStopper
 
         console.print(
             f"[bold blue]Stopping workflows for stack: {stack_name}[/bold blue]"
@@ -2802,7 +2801,7 @@ def load_test(
       3,500
     """
     try:
-        from .load_test import LoadTester
+        from idp_sdk.core.load_test import LoadTester
 
         tester = LoadTester(stack_name=stack_name, region=region)
 
@@ -2922,7 +2921,7 @@ def remove_residual_resources_from_deleted_stacks(
       idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
     """
     try:
-        from .cleanup_orphaned import OrphanedResourceCleanup
+        from idp_sdk.core.cleanup_orphaned import OrphanedResourceCleanup
 
         # Parse regions list
         regions_list = [r.strip() for r in check_stack_regions.split(",")]
