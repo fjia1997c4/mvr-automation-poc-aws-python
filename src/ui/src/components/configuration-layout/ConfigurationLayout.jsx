@@ -1301,8 +1301,8 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Send complete merged configuration - backend will handle stripping defaults
-      const builtObject = { ...mergedConfig };
+      // Send current form values - captures any unsaved changes
+      const builtObject = { ...formValues };
 
       const result = await saveAsNewVersion(builtObject, saveAsVersionName, saveAsVersionDescription);
 
