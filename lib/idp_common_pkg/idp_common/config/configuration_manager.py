@@ -713,7 +713,7 @@ class ConfigurationManager:
                 self.save_raw_configuration(CONFIG_TYPE_CONFIG, None, version=version, description=description)
             except Exception as e:
                 logger.info(f"Failed to resert version {version} to default: {e}")
-            logger.info("Version {version} reset done - all defaults will now be used")
+            logger.info(f"Version {version} reset done - all defaults will now be used")
             return True
     
         if save_as_default:
