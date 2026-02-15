@@ -6803,6 +6803,9 @@ Resources:
       FieldName: releaseReview
 
 Outputs:
+  CustomerManagedEncryptionKeyArn:
+    Description: ARN of the customer-managed KMS encryption key used for S3 buckets. Needed when deploying Lambda Hook functions that read from the working bucket.
+    Value: !GetAtt CustomerManagedEncryptionKey.Arn
   ApplicationWebURL:
     Description: Application Web URL
     Value: !Sub "https://${CloudFrontDistribution.DomainName}/"

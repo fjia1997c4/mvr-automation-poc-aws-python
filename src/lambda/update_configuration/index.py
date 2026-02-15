@@ -128,7 +128,13 @@ def get_model_mapping(model_id: str, target_region_type: str) -> str:
 
 
 def filter_models_by_region(data: Any, region_type: str) -> Any:
-    """Filter out models that don't match the region type"""
+    """Filter out models that don't match the region type.
+    
+    Special model values like 'LambdaHook' are always preserved regardless of region.
+    """
+    # Region-agnostic special model values that should always be included
+    REGION_AGNOSTIC_MODELS = {"LambdaHook"}
+    
     if isinstance(data, dict):
         filtered_data = {}
         for key, value in data.items():
@@ -140,8 +146,11 @@ def filter_models_by_region(data: Any, region_type: str) -> Any:
                 filtered_list = []
                 for item in value:
                     if isinstance(item, str):
+                        # Always include region-agnostic special values (e.g., LambdaHook)
+                        if item in REGION_AGNOSTIC_MODELS:
+                            filtered_list.append(item)
                         # Include models that match the region type or are region-agnostic
-                        if region_type == "us":
+                        elif region_type == "us":
                             # Include US models and non-region-specific models, exclude EU models
                             if item.startswith("us.") or (not item.startswith("eu.") and not item.startswith("us.")):
                                 filtered_list.append(item)
@@ -164,11 +173,17 @@ def filter_models_by_region(data: Any, region_type: str) -> Any:
 
 
 def swap_model_ids(data: Any, region_type: str) -> Any:
-    """Swap model IDs to match the region type"""
+    """Swap model IDs to match the region type.
+    
+    Special model values like 'LambdaHook' are never swapped.
+    """
     if isinstance(data, dict):
         swapped_data = {}
         for key, value in data.items():
-            if isinstance(value, str) and ("us." in value or "eu." in value):
+            if isinstance(value, str) and value == "LambdaHook":
+                # Never swap special model values
+                swapped_data[key] = value
+            elif isinstance(value, str) and ("us." in value or "eu." in value):
                 # This is a model ID - check if it needs swapping
                 if region_type == "us" and value.startswith("eu."):
                     new_model = get_model_mapping(value, "us")

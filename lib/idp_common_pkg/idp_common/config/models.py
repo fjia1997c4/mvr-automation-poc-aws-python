@@ -98,7 +98,11 @@ class ExtractionConfig(BaseModel):
 
     model: str = Field(
         default="us.amazon.nova-pro-v1:0",
-        description="Bedrock model ID for extraction",
+        description="Bedrock model ID for extraction. Use 'LambdaHook' to invoke a custom Lambda function instead of Bedrock.",
+    )
+    model_lambda_hook_arn: Optional[str] = Field(
+        default=None,
+        description="Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
     )
     system_prompt: str = Field(
         default="",
@@ -152,7 +156,11 @@ class ClassificationConfig(BaseModel):
 
     model: str = Field(
         default="us.amazon.nova-pro-v1:0",
-        description="Bedrock model ID for classification",
+        description="Bedrock model ID for classification. Use 'LambdaHook' to invoke a custom Lambda function instead of Bedrock.",
+    )
+    model_lambda_hook_arn: Optional[str] = Field(
+        default=None,
+        description="Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
     )
     system_prompt: str = Field(
         default="", description="System prompt for classification"
@@ -283,7 +291,12 @@ class AssessmentConfig(BaseModel):
         description="Enable Human-in-the-Loop review for low confidence extractions",
     )
     model: Optional[str] = Field(
-        default=None, description="Bedrock model ID for assessment"
+        default=None,
+        description="Bedrock model ID for assessment. Use 'LambdaHook' to invoke a custom Lambda function instead of Bedrock.",
+    )
+    model_lambda_hook_arn: Optional[str] = Field(
+        default=None,
+        description="Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
     )
     system_prompt: str = Field(
         default="",
@@ -340,7 +353,11 @@ class SummarizationConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable summarization")
     model: str = Field(
         default="us.amazon.nova-premier-v1:0",
-        description="Bedrock model ID for summarization",
+        description="Bedrock model ID for summarization. Use 'LambdaHook' to invoke a custom Lambda function instead of Bedrock.",
+    )
+    model_lambda_hook_arn: Optional[str] = Field(
+        default=None,
+        description="Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
     )
     system_prompt: str = Field(
         default="", description="System prompt for summarization"
@@ -387,7 +404,12 @@ class OCRConfig(BaseModel):
         default="textract", description="OCR backend (textract or bedrock)"
     )
     model_id: Optional[str] = Field(
-        default=None, description="Bedrock model ID for OCR (if backend=bedrock)"
+        default=None,
+        description="Bedrock model ID for OCR (if backend=bedrock). Use 'LambdaHook' to invoke a custom Lambda function instead of Bedrock.",
+    )
+    model_lambda_hook_arn: Optional[str] = Field(
+        default=None,
+        description="Lambda function ARN for custom inference (used when model_id is 'LambdaHook'). Function name must start with GENAIIDP-.",
     )
     system_prompt: Optional[str] = Field(
         default=None, description="System prompt for Bedrock OCR"

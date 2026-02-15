@@ -7,6 +7,17 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Lambda Hook Inference (Custom LLM Integration)**
+  - Customers can provide their own custom Lambda function to integrate with any LLM — models hosted on SageMaker, ECS, EC2, or external APIs — by selecting `LambdaHook` as the model in any pipeline step
+  - **Per-Step Granularity**: Configure LambdaHook independently for OCR, Classification, Extraction, Assessment, and Summarization (Pattern-2)
+  - **Converse API-Compatible Contract**: Lambda receives the same Converse API payload structure used with Bedrock, and returns a Converse API-compatible response — documented request/response format for easy implementation
+  - **S3 Image References**: Inline image bytes automatically uploaded to S3 and replaced with `s3Location` references to avoid Lambda's 6MB payload limit
+  - **GENAIIDP- Naming Convention**: Lambda function names must start with `GENAIIDP-` for secure, scoped IAM permissions
+  - **Built-in Retry Logic**: Exponential backoff with jitter for transient errors (throttling, timeouts), matching Bedrock retry behavior
+  - **Metering Integration**: Token usage from Lambda response tracked in document metering data for cost calculations
+  - **Sample Functions**: Examples in `samples/lambda-hook-inference/` — Bedrock proxy (with customization points) and SageMaker endpoint hook, with SAM template
+  - **Documentation**: New [lambda-hook-inference.md](docs/lambda-hook-inference.md) with architecture diagram, configuration guide, payload contract, SageMaker example, IAM, and limitations
+
 - **Configuration Versioning System**
   - Manage multiple named configuration versions as complete, self-contained snapshots
   - **Version Management UI**: Configuration Versions table with create, compare, activate, delete, and import operations; version comparison with CSV/JSON export
