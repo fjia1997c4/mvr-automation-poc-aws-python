@@ -4,7 +4,7 @@
 # Specifies models available in GovCloud. All other settings are currently
 # inherited from system defaults.
 
-processing_mode: bedrock
+use_bda: false
 
 notes: "Lending package sample - processes payslips, driver licenses, bank checks, bank statements, W2s, and insurance applications - Pattern2 (Bedrock LLM) - GovCloud"
 

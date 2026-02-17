@@ -3,7 +3,7 @@
 
 # All settings not explicitly defined here are inherited from system defaults.
 
-processing_mode: bda
+use_bda: true
 
 notes: OmniAI OCR Benchmark dataset settings for Pattern1 (BDA). Assessment and summarization disabled by default.
 

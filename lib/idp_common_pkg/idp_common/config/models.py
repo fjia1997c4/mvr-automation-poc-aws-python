@@ -1073,11 +1073,12 @@ class IDPConfig(BaseModel):
         default="Config", description="Configuration type"
     )
 
-    processing_mode: Optional[Literal["bedrock", "bda"]] = Field(
-        default=None,
-        description="Processing mode: 'bedrock' for direct Bedrock FM calls (Pattern 2), "
-        "'bda' for Bedrock Data Automation (Pattern 1). "
-        "When not set, the mode is determined by the deployed pattern.",
+    use_bda: bool = Field(
+        default=False,
+        description="Use Bedrock Data Automation (BDA) for document processing. "
+        "When true, BDA handles OCR, classification, and extraction as a single managed service. "
+        "When false (default), uses the step-by-step pipeline with configurable OCR, classification, "
+        "extraction, and assessment stages.",
     )
 
     notes: Optional[str] = Field(default=None, description="Configuration notes")

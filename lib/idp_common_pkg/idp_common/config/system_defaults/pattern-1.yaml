@@ -15,7 +15,7 @@
 # =============================================================================
 
 # Processing mode: bda = Bedrock Data Automation
-processing_mode: bda
+use_bda: true
 
 # Only inherit modules relevant to Pattern-1
 # Note: base-ocr, base-classification, base-extraction are NOT inherited

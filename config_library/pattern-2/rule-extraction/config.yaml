@@ -1,4 +1,4 @@
-processing_mode: bedrock
+use_bda: false
 
 notes: Default settings for lending-package-sample configuration
 ocr:

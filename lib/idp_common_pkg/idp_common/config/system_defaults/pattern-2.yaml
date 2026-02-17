@@ -14,8 +14,8 @@
 # No pattern-specific overrides needed - all defaults come from base modules.
 # =============================================================================
 
-# Processing mode: bedrock = Direct Bedrock FM calls
-processing_mode: bedrock
+# BDA not used - step-by-step pipeline
+use_bda: false
 
 _inherits: base.yaml
 

@@ -3,7 +3,7 @@
 
 # All settings are currently inherited from system defaults.
 
-processing_mode: bda
+use_bda: true
 
 notes: Default settings for Pattern1 (BDA)
 classes:
