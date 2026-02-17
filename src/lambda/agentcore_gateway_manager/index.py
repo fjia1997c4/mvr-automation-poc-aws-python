@@ -178,10 +178,6 @@ def create_gateway(props, gateway_name, client):
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "stack_name": {
-                                    "type": "string",
-                                    "description": "CloudFormation stack name (e.g., 'prod-idp', 'IDP')"
-                                },
                                 "step": {
                                     "type": "string",
                                     "description": "Pipeline step to reprocess from (classification or extraction)"
@@ -199,7 +195,7 @@ def create_gateway(props, gateway_name, client):
                                     "description": "AWS region (optional)"
                                 }
                             },
-                            "required": ["stack_name", "step"]
+                            "required": ["step"]
                         }
                     },
                     {
@@ -208,10 +204,6 @@ def create_gateway(props, gateway_name, client):
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "stack_name": {
-                                    "type": "string",
-                                    "description": "CloudFormation stack name"
-                                },
                                 "batch_id": {
                                     "type": "string",
                                     "description": "Batch identifier (e.g., 'mcp-batch-20250124-143000')"
@@ -235,7 +227,7 @@ def create_gateway(props, gateway_name, client):
                                     "description": "AWS region (optional)"
                                 }
                             },
-                            "required": ["stack_name", "batch_id"]
+                            "required": ["batch_id"]
                         }
                     }
                 ]
