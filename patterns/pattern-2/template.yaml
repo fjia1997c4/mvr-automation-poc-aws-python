@@ -1236,33 +1236,40 @@ Resources:
                 order: 5
               model_lambda_hook_arn:
                 type: string
+                dependsOn: { field: "use_bda", value: false }
                 description: "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-."
                 default: ""
                 order: 6
                 dependsOn: { field: "model", value: "LambdaHook" }
               temperature:
                 type: number
+                dependsOn: { field: "use_bda", value: false }
                 description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                 order: 7
               top_k:
                 type: number
+                dependsOn: { field: "use_bda", value: false }
                 description: Sampling Top K
                 order: 8
               top_p:
                 type: number
+                dependsOn: { field: "use_bda", value: false }
                 description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 to use temperature instead."
                 order: 9
               max_tokens:
                 type: number
+                dependsOn: { field: "use_bda", value: false }
                 description: "Maximum number of output tokens. Ensure this does not exceed the selected model's limit. See model documentation for details."
                 order: 10
               system_prompt:
                 type: string
+                dependsOn: { field: "use_bda", value: false }
                 format: textarea
                 description: System prompt
                 order: 11
               task_prompt:
                 type: string
+                dependsOn: { field: "use_bda", value: false }
                 format: textarea
                 description: Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 12
