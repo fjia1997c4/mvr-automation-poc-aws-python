@@ -437,19 +437,20 @@ Resources:
           - classification
           - extraction
         properties:
-          use_bda:
+          notes:
             order: 0
+            type: string
+            description: Notes
+          use_bda:
+            order: 1
             type: boolean
             description: Use Bedrock Data Automation (BDA) for OCR, classification, and extraction
             default: false
-          notes:
-            order: 1
-            type: string
-            description: Notes
           ocr:
             order: 2
             type: object
             sectionLabel: OCR Configuration
+            description: "Not used when BDA is enabled - BDA handles OCR internally"
             dependsOn: { field: "use_bda", value: false }
             required:
               - features
@@ -811,6 +812,7 @@ Resources:
             order: 3
             type: object
             sectionLabel: Classification Inference
+            description: "Not used when BDA is enabled - BDA handles classification internally"
             dependsOn: { field: "use_bda", value: false }
             required:
               - model
@@ -960,6 +962,7 @@ Resources:
             type: object
             format: section
             sectionLabel: Extraction Inference
+            description: "Not used when BDA is enabled - BDA handles extraction internally"
             dependsOn: { field: "use_bda", value: false }
             required:
               - model
@@ -1104,6 +1107,8 @@ Resources:
             order: 5
             type: object
             sectionLabel: Assessment Inference
+            description: "Not used when BDA is enabled"
+            dependsOn: { field: "use_bda", value: false }
             properties:
               enabled:
                 type: boolean
