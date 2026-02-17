@@ -43,6 +43,119 @@ class BdaBlueprintService:
 
         return
 
+    def _sanitize_project_name(self, name: str) -> str:
+        """Sanitize a string for use in BDA project names.
+        
+        BDA project names must be alphanumeric with hyphens only.
+        """
+        import re
+        # Replace non-alphanumeric chars (except hyphens) with hyphens
+        sanitized = re.sub(r'[^a-zA-Z0-9-]', '-', name)
+        # Collapse multiple hyphens
+        sanitized = re.sub(r'-+', '-', sanitized)
+        # Trim to reasonable length (BDA limit)
+        return sanitized[:128].strip('-')
+
+    def get_or_create_project_for_version(self, version_name: str) -> str:
+        """Get or create a BDA project for a specific config version.
+        
+        Each config version gets its own BDA project to enable isolated
+        blueprint configurations. Project ARNs are stored in DynamoDB
+        (ConfigurationTable) with key 'BdaProject#{version_name}'.
+        
+        Args:
+            version_name: Config version name (e.g., 'default', 'v1', 'production')
+            
+        Returns:
+            BDA project ARN for this version
+        """
+        import boto3
+        
+        table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
+        if not table_name:
+            logger.warning("CONFIGURATION_TABLE_NAME not set, falling back to constructor ARN")
+            return self.dataAutomationProjectArn
+        
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(table_name)
+        
+        # Look up stored project ARN for this version
+        db_key = f"BdaProject#{version_name}"
+        try:
+            response = table.get_item(Key={"Configuration": db_key})
+            item = response.get("Item")
+            if item and item.get("ProjectArn"):
+                project_arn = item["ProjectArn"]
+                logger.info(f"Found existing BDA project for version '{version_name}': {project_arn}")
+                # Verify the project still exists
+                try:
+                    self.blueprint_creator.bedrock_client.get_data_automation_project(
+                        projectArn=project_arn, projectStage="LIVE"
+                    )
+                    return project_arn
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                        logger.warning(f"Stored BDA project {project_arn} no longer exists, creating new one")
+                    else:
+                        raise
+        except ClientError as e:
+            logger.warning(f"Error looking up BDA project for version '{version_name}': {e}")
+        
+        # Create a new project for this version
+        sanitized_version = self._sanitize_project_name(version_name)
+        project_name = f"{self.blueprint_name_prefix}-{sanitized_version}"
+        project_description = f"BDA project for config version '{version_name}' in stack {self.blueprint_name_prefix}"
+        
+        logger.info(f"Creating new BDA project for version '{version_name}': {project_name}")
+        
+        # Create a minimal blueprint to bootstrap the project
+        # (BDA requires at least one blueprint for project creation)
+        bootstrap_blueprint = self.blueprint_creator.create_blueprint(
+            document_type="bootstrap",
+            blueprint_name=f"{project_name}-bootstrap",
+        )
+        
+        if not bootstrap_blueprint:
+            raise RuntimeError(f"Failed to create bootstrap blueprint for project {project_name}")
+        
+        bootstrap_arn = bootstrap_blueprint.get("blueprint", {}).get("blueprintArn")
+        
+        result = self.blueprint_creator.create_data_automation_project(
+            project_name=project_name,
+            description=project_description,
+            blueprint_arn=bootstrap_arn,
+        )
+        
+        if not result:
+            raise RuntimeError(f"Failed to create BDA project for version '{version_name}'")
+        
+        project_arn = result.get("projectArn")
+        if not project_arn:
+            raise RuntimeError(f"No projectArn returned when creating BDA project for version '{version_name}'")
+        
+        # Store the project ARN in DynamoDB
+        try:
+            table.put_item(Item={
+                "Configuration": db_key,
+                "ProjectArn": project_arn,
+                "ProjectName": project_name,
+                "VersionName": version_name,
+            })
+            logger.info(f"Stored BDA project ARN for version '{version_name}': {project_arn}")
+        except ClientError as e:
+            logger.error(f"Failed to store BDA project ARN: {e}")
+            # Don't fail - project was created successfully
+        
+        # Clean up bootstrap blueprint (it will be replaced by real ones during sync)
+        if bootstrap_arn:
+            try:
+                self.blueprint_creator.bedrock_client.delete_blueprint(blueprintArn=bootstrap_arn)
+                logger.info(f"Cleaned up bootstrap blueprint: {bootstrap_arn}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up bootstrap blueprint: {e}")
+        
+        return project_arn
+
     def _normalize_aws_blueprint_schema(self, blueprint_schema: dict) -> dict:
         """
         Normalize AWS blueprint schema by fixing common issues.

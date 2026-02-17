@@ -37,24 +37,32 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         
         logger.info(f"Sync direction: {sync_direction}")
         
-        # Get BDA project ARN from environment
-        bda_project_arn = os.environ.get('BDA_PROJECT_ARN')
-        if not bda_project_arn:
-            logger.error("BDA project ARN not configured")
-            return {
-                "success": False,
-                "error": {
-                    "type": "CONFIGURATION_ERROR",
-                    "message": "BDA project ARN not configured"
-                },
-                "processedClasses": [],
-                "direction": sync_direction
-            }
+        # Initialize BDA service with the default project ARN from environment
+        # The service will create per-version projects as needed
+        default_bda_project_arn = os.environ.get('BDA_PROJECT_ARN')
+        bda_service = BdaBlueprintService(dataAutomationProjectArn=default_bda_project_arn)
         
-        logger.info(f"Using BDA project ARN: {bda_project_arn}, config version : {versionName}")
-        
-        # Initialize BDA service
-        bda_service = BdaBlueprintService(dataAutomationProjectArn=bda_project_arn)
+        # Get or create a BDA project for this specific config version
+        try:
+            bda_project_arn = bda_service.get_or_create_project_for_version(versionName)
+            bda_service.dataAutomationProjectArn = bda_project_arn
+            logger.info(f"Using BDA project ARN for version '{versionName}': {bda_project_arn}")
+        except Exception as e:
+            logger.error(f"Failed to get/create BDA project for version '{versionName}': {e}")
+            # Fall back to default project ARN if per-version creation fails
+            if default_bda_project_arn:
+                logger.warning(f"Falling back to default BDA project: {default_bda_project_arn}")
+                bda_project_arn = default_bda_project_arn
+            else:
+                return {
+                    "success": False,
+                    "error": {
+                        "type": "CONFIGURATION_ERROR",
+                        "message": f"Failed to get/create BDA project for version '{versionName}': {str(e)}"
+                    },
+                    "processedClasses": [],
+                    "direction": sync_direction
+                }
         
         # Handle cleanup_orphaned direction separately
         if sync_direction == "cleanup_orphaned":
