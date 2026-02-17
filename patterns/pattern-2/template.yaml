@@ -1189,7 +1189,8 @@ Resources:
                     dependsOn: { field: "enabled", value: true }
               model:
                 type: string
-                description: "Bedrock model ID. Select 'LambdaHook' to use a custom Lambda function for inference."
+                description: "Bedrock model ID for assessment (step-by-step pipeline only)"
+                dependsOn: { field: "use_bda", value: false }
                 enum:
                   [
                     "LambdaHook",
