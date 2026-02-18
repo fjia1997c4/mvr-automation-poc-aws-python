@@ -111,7 +111,16 @@ Natural language queries for document analytics and system information.
 
 ### process
 
-Process documents from S3 or base64 content.
+Process documents from S3 or base64 content. To process documents via S3:
+
+1. Upload documents to the `MCPContentBucket` (available in CloudFormation stack outputs):
+   ```bash
+   aws s3 cp documents/ s3://<MCPContentBucket>/documents/ --recursive
+   ```
+2. Call the `process` tool with the S3 URI pointing to your uploaded documents
+3. The tool queues documents for processing through the IDP pipeline
+
+**Alternatively, process documents via base64 content** by providing the encoded content directly to the tool.
 
 **Input Schema:**
 ```json

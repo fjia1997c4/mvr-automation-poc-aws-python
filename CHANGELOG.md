@@ -9,7 +9,13 @@ SPDX-License-Identifier: MIT-0
 
 - **Added support for Claude Opus 4.6 model and Long Context (1M) variant**
 - **Added support for Claude Sonnet 4.6 model and Long Context (1M) variant**
-
+- **Included MCP tools `process`, `reprocess`, `status`, `search` for document processing**
+- **Dedicated S3 bucket for uploading documents to process via MCP tools**
+- **CloudFormation stack output `MCPContentBucket` provides bucket name for document uploads**
+- **Direct integration with IDP SDK core modules for document processing workflows**
+- **Smart error handling with helpful messages for missing or invalid parameters**
+- **Added `process` and `reprocess` CLI commands for batch operations via command line**
+- **Maintained `run-inference` and `rerun-inference` CLI commands with deprecation notices**
 - **React UI TypeScript Migration (Phases 1–2)** — Added TypeScript tooling foundation (`tsconfig.json`, `@types/*`, ESLint overrides for `.ts/.tsx`) and migrated all 5 contexts, 16 hooks, constants, and utility modules from JavaScript to TypeScript with proper interfaces and type annotations. No runtime behavior changes; JS and TS coexist for incremental migration. ([#187](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/187), [#188](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/188), [#191](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/191))
 
 ### Fixed
