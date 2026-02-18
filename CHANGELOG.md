@@ -7,7 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Added support for Claude Opus 4.6 model and Long Context (1M) variant** 
+- **Added support for Claude Opus 4.6 model and Long Context (1M) variant**
+- **Added support for Claude Sonnet 4.6 model and Long Context (1M) variant**
 
 - **React UI TypeScript Migration (Phases 1–2)** — Added TypeScript tooling foundation (`tsconfig.json`, `@types/*`, ESLint overrides for `.ts/.tsx`) and migrated all 5 contexts, 16 hooks, constants, and utility modules from JavaScript to TypeScript with proper interfaces and type annotations. No runtime behavior changes; JS and TS coexist for incremental migration. ([#187](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/187), [#188](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/188), [#191](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/191))
 
