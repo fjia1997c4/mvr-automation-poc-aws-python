@@ -1261,7 +1261,10 @@ const CapacityPlanningLayout = () => {
     setHasCalculated(false);
     try {
       // Fetch the latest configuration before calculating
-      await fetchConfiguration();
+      // IMPORTANT: Use the selected config version, not 'default'
+      if (selectedConfigVersion) {
+        await fetchConfiguration(selectedConfigVersion.value, true);
+      }
 
       // Validate OCR tokens if Bedrock OCR is configured
       // Note: 0 is a valid value for tokens, only check for undefined/null/empty string/NaN
@@ -2750,8 +2753,13 @@ const CapacityPlanningLayout = () => {
         </Container>
 
         {/* Calculate Button */}
-        <Button variant="primary" onClick={calculateCapacityRequirements} loading={loading}>
-          Calculate Capacity Requirements
+        <Button
+          variant="primary"
+          onClick={calculateCapacityRequirements}
+          loading={loading}
+          disabled={!selectedConfigVersion || !configuration}
+        >
+          {!selectedConfigVersion ? 'Loading configuration version...' : 'Calculate Capacity Requirements'}
         </Button>
 
         {results?.success === false && results?.metrics && (
