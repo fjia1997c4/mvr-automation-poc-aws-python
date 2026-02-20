@@ -45,6 +45,8 @@ from .models import (
     BatchDownloadResult,
     BatchInfo,
     BatchListResult,
+    BatchProcessResult,
+    BatchReprocessResult,
     BatchRerunResult,
     BatchResult,
     BatchStatus,
@@ -59,6 +61,7 @@ from .models import (
     DocumentInfo,
     DocumentListResult,
     DocumentMetadata,
+    DocumentReprocessResult,
     DocumentRerunResult,
     DocumentState,
     DocumentStatus,
@@ -88,7 +91,7 @@ from .models import (
     StopWorkflowsResult,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.4.16"
 
 __all__ = [
     # Client
@@ -112,10 +115,12 @@ __all__ = [
     "StackResources",
     # Batch models
     "BatchResult",
+    "BatchProcessResult",
     "BatchStatus",
     "BatchInfo",
     "BatchListResult",
     "BatchRerunResult",
+    "BatchReprocessResult",
     "BatchDownloadResult",
     "BatchDeletionResult",
     # Document models
@@ -123,6 +128,7 @@ __all__ = [
     "DocumentUploadResult",
     "DocumentDownloadResult",
     "DocumentRerunResult",
+    "DocumentReprocessResult",
     "DocumentDeletionResult",
     "DocumentMetadata",
     "DocumentInfo",
