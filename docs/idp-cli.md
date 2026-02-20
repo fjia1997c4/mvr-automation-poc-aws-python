@@ -40,6 +40,9 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [config-validate](#config-validate)
   - [config-download](#config-download)
   - [config-upload](#config-upload)
+  - [config-list](#config-list)
+  - [config-activate](#config-activate)
+  - [config-delete](#config-delete)
 - [Complete Evaluation Workflow](#complete-evaluation-workflow)
   - [Step 1: Deploy Your Stack](#step-1-deploy-your-stack)
   - [Step 2: Initial Processing from Local Directory](#step-2-initial-processing-from-local-directory)
@@ -1777,6 +1780,90 @@ idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-val
 # Explicit pattern for validation
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
 ```
+
+---
+
+### `config-list`
+
+List all configuration versions in a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-list [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# List all configuration versions
+idp-cli config-list --stack-name my-stack
+```
+
+**Output:**
+Shows a table with version names, active status, creation/update timestamps, and descriptions.
+
+---
+
+### `config-activate`
+
+Activate a configuration version in a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-activate [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-version` (required): Configuration version to activate
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Activate a specific version
+idp-cli config-activate --stack-name my-stack --config-version v2
+
+# Activate default version
+idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Notes:**
+- Sets the specified version as active for all new document processing
+- Version must exist (use `config-list` to see available versions)
+
+---
+
+### `config-delete`
+
+Delete a configuration version from a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-delete [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-version` (required): Configuration version to delete
+- `--force`: Skip confirmation prompt
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Delete a version with confirmation
+idp-cli config-delete --stack-name my-stack --config-version old-version
+
+# Delete without confirmation prompt
+idp-cli config-delete --stack-name my-stack --config-version old-version --force
+```
+
+**Restrictions:**
+- Cannot delete the 'default' configuration version
+- Cannot delete currently active versions (activate another version first)
+- Includes confirmation prompt unless `--force` is used
 
 **What Happens:**
 1. Loads and parses your YAML or JSON config file

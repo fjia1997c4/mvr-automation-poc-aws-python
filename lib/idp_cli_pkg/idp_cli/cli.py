@@ -142,7 +142,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.4.12")
+@click.version_option(version="0.4.16")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -3767,6 +3767,302 @@ def config_download(
 
     except Exception as e:
         logger.error(f"Error downloading config: {e}", exc_info=True)
+
+
+@cli.command(name="config-activate")
+@click.option(
+    "--stack-name",
+    required=True,
+    help="CloudFormation stack name",
+)
+@click.option(
+    "--config-version",
+    required=True,
+    help="Configuration version to activate",
+)
+def config_activate(
+    stack_name: str,
+    config_version: str,
+):
+    """
+    Activate a configuration version in a deployed IDP stack
+
+    Sets the specified configuration version as the active version.
+    All new document processing will use this configuration.
+
+    Examples:
+      # Activate a specific version
+      idp-cli config-activate --stack-name my-stack --config-version v2
+
+      # Activate default version
+      idp-cli config-activate --stack-name my-stack --config-version default
+    """
+    try:
+        console.print(
+            f"[bold blue]Activating config version in stack: {stack_name}[/bold blue]"
+        )
+        console.print(f"Version: {config_version}")
+
+        # Get stack resources
+        try:
+            config_table = None
+            cf_client = boto3.client("cloudformation")
+            resources = cf_client.list_stack_resources(StackName=stack_name)
+            for resource in resources["StackResourceSummaries"]:
+                if resource["LogicalResourceId"] == "ConfigurationTable":
+                    config_table = resource.get("PhysicalResourceId")
+                if config_table:
+                    break
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+            return
+
+        if not config_table:
+            console.print(
+                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+            )
+            return
+
+        console.print(f"[dim]Using table: {config_table}[/dim]")
+
+        # Activate the version
+        try:
+            from idp_common.config.configuration_manager import ConfigurationManager
+
+            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            manager = ConfigurationManager()
+
+            # Check if version exists
+            existing_config = manager.get_configuration(
+                "Config", version=config_version
+            )
+            if not existing_config:
+                console.print(
+                    f"[red]✗ Configuration version '{config_version}' does not exist[/red]"
+                )
+                console.print(
+                    f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
+                )
+                return
+
+            # Activate the version
+            manager.activate_version(config_version)
+            console.print(
+                f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
+            )
+            console.print("New documents will use this configuration immediately.")
+
+        except ValueError as e:
+            console.print(f"[red]✗ {e}[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]✗ Failed to activate configuration version: {e}[/red]")
+            return
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to activate configuration: {e}[/red]")
+        return
+
+
+@cli.command(name="config-list")
+@click.option(
+    "--stack-name",
+    required=True,
+    help="CloudFormation stack name",
+)
+def config_list(stack_name: str):
+    """
+    List all configuration versions in a deployed IDP stack
+
+    Shows all available configuration versions with their status,
+    creation dates, and descriptions.
+
+    Examples:
+      # List all configuration versions
+      idp-cli config-list --stack-name my-stack
+    """
+    try:
+        console.print(
+            f"[bold blue]Listing configuration versions in stack: {stack_name}[/bold blue]"
+        )
+
+        # Get stack resources
+        try:
+            config_table = None
+            cf_client = boto3.client("cloudformation")
+            resources = cf_client.list_stack_resources(StackName=stack_name)
+            for resource in resources["StackResourceSummaries"]:
+                if resource["LogicalResourceId"] == "ConfigurationTable":
+                    config_table = resource.get("PhysicalResourceId")
+                if config_table:
+                    break
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+            return
+
+        if not config_table:
+            console.print(
+                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+            )
+            return
+
+        console.print(f"[dim]Using table: {config_table}[/dim]")
+
+        # List configuration versions
+        try:
+            from idp_common.config.configuration_manager import ConfigurationManager
+
+            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            manager = ConfigurationManager()
+            versions = manager.list_config_versions()
+
+            if not versions:
+                console.print("[yellow]No configuration versions found[/yellow]")
+                return
+
+            console.print(
+                f"\n[bold]Found {len(versions)} configuration version(s):[/bold]\n"
+            )
+
+            # Create table for better formatting
+            from rich.table import Table
+
+            table = Table(show_header=True, header_style="bold blue")
+            table.add_column("Version Name", style="cyan")
+            table.add_column("Status", justify="center")
+            table.add_column("Created", style="dim")
+            table.add_column("Updated", style="dim")
+            table.add_column("Description", style="green")
+
+            for version in sorted(versions, key=lambda x: x.get("versionName", "")):
+                version_name = version.get("versionName", "unknown")
+                status = (
+                    "[bold green]ACTIVE[/bold green]" if version.get("isActive") else ""
+                )
+                created = (
+                    version.get("createdAt", "").replace("T", " ").replace("Z", "")
+                    if version.get("createdAt")
+                    else ""
+                )
+                updated = (
+                    version.get("updatedAt", "").replace("T", " ").replace("Z", "")
+                    if version.get("updatedAt")
+                    else ""
+                )
+                description = version.get("description", "")
+
+                table.add_row(version_name, status, created, updated, description)
+
+            console.print(table)
+
+        except ValueError as e:
+            console.print(f"[red]✗ {e}[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]✗ Failed to list configuration versions: {e}[/red]")
+            return
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to list configurations: {e}[/red]")
+        return
+
+
+@cli.command(name="config-delete")
+@click.option(
+    "--stack-name",
+    required=True,
+    help="CloudFormation stack name",
+)
+@click.option(
+    "--config-version",
+    required=True,
+    help="Configuration version to delete",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def config_delete(
+    stack_name: str,
+    config_version: str,
+    force: bool,
+):
+    """
+    Delete a configuration version from a deployed IDP stack
+
+    Removes the specified configuration version from DynamoDB.
+    Cannot delete the 'default' version or currently active versions.
+
+    Examples:
+      # Delete a version with confirmation
+      idp-cli config-delete --stack-name my-stack --config-version old-version
+
+      # Delete without confirmation prompt
+      idp-cli config-delete --stack-name my-stack --config-version old-version --force
+    """
+    try:
+        console.print(
+            f"[bold blue]Deleting config version from stack: {stack_name}[/bold blue]"
+        )
+        console.print(f"Version: {config_version}")
+
+        # Get stack resources
+        try:
+            config_table = None
+            cf_client = boto3.client("cloudformation")
+            resources = cf_client.list_stack_resources(StackName=stack_name)
+            for resource in resources["StackResourceSummaries"]:
+                if resource["LogicalResourceId"] == "ConfigurationTable":
+                    config_table = resource.get("PhysicalResourceId")
+                if config_table:
+                    break
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+            return
+
+        if not config_table:
+            console.print(
+                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+            )
+            return
+
+        console.print(f"[dim]Using table: {config_table}[/dim]")
+
+        # Delete the version
+        try:
+            from idp_common.config.configuration_manager import ConfigurationManager
+
+            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            manager = ConfigurationManager()
+
+            # Confirmation prompt
+            if not force:
+                if not click.confirm(
+                    f"Are you sure you want to delete configuration version '{config_version}'?"
+                ):
+                    console.print("[yellow]Deletion cancelled[/yellow]")
+                    return
+
+            # Delete the version (method handles all validations)
+            manager.delete_configuration("Config", version=config_version)
+            console.print(
+                f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
+            )
+
+        except ValueError as e:
+            console.print(f"[red]✗ {e}[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]✗ Failed to delete configuration version: {e}[/red]")
+            return
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to delete configuration: {e}[/red]")
+        return
         console.print(f"[red]✗ Error: {e}[/red]")
         sys.exit(1)
 

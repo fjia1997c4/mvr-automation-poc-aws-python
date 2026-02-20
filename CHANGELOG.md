@@ -7,20 +7,28 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Capacity Planning (Beta - Pattern 2 Only)**
+  - Comprehensive capacity planning tool to optimize document processing performance, predict resource requirements, and calculate AWS service quota needs
+  - **Pattern 2 Exclusive**: Only available for Pattern 2 deployments
+  - **Token Usage Configuration**: Define expected tokens per document type for each processing step (OCR, Classification, Extraction, Assessment, Summarization)
+  - **Auto-Populate from Documents**: Extract token usage and page counts from actual processed documents' metering data with time range filtering (2hrs to 30 days or custom date range)
+  - **Processing Schedule**: Configure hourly document volumes with template-based auto-fill options (single slot, all doc types at 9 AM, business hours, full day)
+  - **Quota Calculation**: Automated AWS Bedrock quota requirements (TPM and RPM) with 10% safety buffer
+  - **Export Capabilities**: Complete capacity plan export with configuration version, model details, token usage, schedule, and quota requirements
+  - **GitHub Feedback Integration**: Beta feature with direct link to GitHub Issues for user feedback
+  - **Documentation**: New [capacity-planning.md](docs/capacity-planning.md) with comprehensive feature guide, calculation formulas, and safety buffer explanations
+- **React UI TypeScript Migration (Phases 1–3 — Complete)** — Completed full migration of the React UI codebase from JSX/JS to TSX/TS. Phases 1–2 added TypeScript tooling and migrated contexts, hooks, constants, and utilities. Phase 3 migrated all remaining 207 components, GraphQL operations, routes, modals, and entry points across 13 incremental sub-phases (211 files changed). Removed `prop-types` dependency; all runtime prop validation replaced with TypeScript interfaces. No behavioral or visual changes. ([#187](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/187), [#188](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/188), [#191](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/191), [#198](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/198))
+- **Configuration Version Management Commands for CLI and SDK** — Added `config-list`, `config-activate`, and `config-delete` CLI commands and corresponding `client.config.list()`, `client.config.activate()`, `client.config.delete()` SDK operations for programmatic configuration version management. Includes safety protections (default/active version deletion prevention, confirmation prompts, existence validation), `--force` flag for automation, and Rich table output for version listing.
 - **Added support for Claude Opus 4.6 model and Long Context (1M) variant**
 - **Added support for Claude Sonnet 4.6 model and Long Context (1M) variant**
 - **Included MCP tools `process`, `reprocess`, `status`, `search` for document processing**
-- **Dedicated S3 bucket for uploading documents to process via MCP tools**
-- **CloudFormation stack output `MCPContentBucket` provides bucket name for document uploads**
-- **Direct integration with IDP SDK core modules for document processing workflows**
-- **Smart error handling with helpful messages for missing or invalid parameters**
 - **Added `process` and `reprocess` CLI commands for batch operations via command line**
 - **Added external mcp client example `examples/external-mcp-client`**
 - **Maintained `run-inference` and `rerun-inference` CLI commands with deprecation notices**
-- **React UI TypeScript Migration (Phases 1–2)** — Added TypeScript tooling foundation (`tsconfig.json`, `@types/*`, ESLint overrides for `.ts/.tsx`) and migrated all 5 contexts, 16 hooks, constants, and utility modules from JavaScript to TypeScript with proper interfaces and type annotations. No runtime behavior changes; JS and TS coexist for incremental migration. ([#187](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/187), [#188](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/188), [#191](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/191))
 
 ### Fixed
 
+- **Fixed DynamoDB 400KB item size limit blocking configs with 45+ document classes** — Configuration data is now gzip-compressed before storing to DynamoDB, achieving 37-95x compression ratios. Supports 3,000+ document classes within the 400KB limit. Fully backward compatible with existing deployments. ([#200](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/200), [#201](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/201))
 - **Fixed Processing Flow chart using active stack config instead of the document's actual config version** for determining disabled steps (assessment, summarization, etc.)
 
 ## [0.4.15]

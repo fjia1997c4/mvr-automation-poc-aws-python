@@ -85,6 +85,9 @@ client.config.create(...)
 client.config.validate(...)
 client.config.upload(...)
 client.config.download(...)
+client.config.list(...)
+client.config.activate(...)
+client.config.delete(...)
 
 # Manifest operations
 client.manifest.generate(...)
@@ -897,6 +900,47 @@ result = client.config.download(
 
 print(result.yaml_content)
 ```
+
+### config.list()
+
+List all configuration versions in a deployed stack.
+
+```python
+result = client.config.list()
+
+print(f"Found {result['count']} versions:")
+for version in result['versions']:
+    status = " (ACTIVE)" if version.get('isActive') else ""
+    print(f"  - {version['versionName']}{status}")
+```
+
+### config.activate()
+
+Activate a configuration version.
+
+```python
+result = client.config.activate("v2")
+
+if result["success"]:
+    print(f"Activated version: {result['activated_version']}")
+else:
+    print(f"Failed to activate: {result['error']}")
+```
+
+### config.delete()
+
+Delete a configuration version.
+
+```python
+result = client.config.delete("old-version")
+
+if result["success"]:
+    print(f"Deleted version: {result['deleted_version']}")
+else:
+    print(f"Failed to delete: {result['error']}")
+```
+
+**Note:** Cannot delete 'default' or currently active versions.
 
 ---
 
