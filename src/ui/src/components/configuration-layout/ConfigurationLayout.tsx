@@ -2548,7 +2548,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 variant="primary"
                 onClick={() => {
                   setShowSyncToBdaConfirmModal(false);
-                  const arnToUse = bdaSyncMode === 'existing' ? bdaProjectArnInput.trim() : undefined;
+                  const arnToUse = bdaSyncMode === 'existing' ? bdaProjectArnInput.trim() : 'CREATE_NEW';
                   handleSyncBdaIdp('idp_to_bda', arnToUse);
                   setBdaSyncMode('create');
                   setBdaProjectArnInput('');

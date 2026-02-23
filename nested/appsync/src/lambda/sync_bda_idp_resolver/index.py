@@ -57,22 +57,28 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         bda_project_arn = None
         arn_source = None
         
-        # Priority 1: Explicit ARN from UI
-        if explicit_bda_arn:
+        # Check for CREATE_NEW sentinel — user explicitly wants a new BDA project
+        force_create_new = explicit_bda_arn == "CREATE_NEW"
+        if force_create_new:
+            explicit_bda_arn = None  # Clear sentinel so it's not used as an ARN
+            logger.info("User requested CREATE_NEW — will force-create a new BDA project")
+        
+        # Priority 1: Explicit ARN from UI (skip if CREATE_NEW was requested)
+        if explicit_bda_arn and not force_create_new:
             bda_project_arn = explicit_bda_arn
             arn_source = "user-provided"
             logger.info(f"Using user-provided BDA project ARN: {bda_project_arn}")
         
-        # Priority 2: Version tracking table
-        if not bda_project_arn and manager:
+        # Priority 2: Version tracking table (skip if CREATE_NEW was requested)
+        if not bda_project_arn and not force_create_new and manager:
             tracked_arn = manager.get_bda_project_arn(versionName)
             if tracked_arn:
                 bda_project_arn = tracked_arn
                 arn_source = "version-tracking"
                 logger.info(f"Using tracked BDA project ARN for version '{versionName}': {bda_project_arn}")
         
-        # Priority 3: Legacy env var fallback
-        if not bda_project_arn and default_bda_project_arn:
+        # Priority 3: Legacy env var fallback (skip if CREATE_NEW was requested)
+        if not bda_project_arn and not force_create_new and default_bda_project_arn:
             bda_project_arn = default_bda_project_arn
             arn_source = "env-var-legacy"
             logger.info(f"Using legacy BDA_PROJECT_ARN env var: {bda_project_arn}")
@@ -84,8 +90,8 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 except Exception as e:
                     logger.warning(f"Failed to migrate legacy BDA ARN to version tracking: {e}")
         
-        # Priority 4: Auto-create for idp_to_bda or bidirectional
-        if not bda_project_arn and sync_direction in ("idp_to_bda", "bidirectional"):
+        # Priority 4: Auto-create for idp_to_bda or bidirectional (or when CREATE_NEW forced)
+        if not bda_project_arn and (force_create_new or sync_direction in ("idp_to_bda", "bidirectional")):
             logger.info(f"No BDA project found, auto-creating for version '{versionName}'")
             if manager:
                 manager.set_bda_sync_status(versionName, "creating")

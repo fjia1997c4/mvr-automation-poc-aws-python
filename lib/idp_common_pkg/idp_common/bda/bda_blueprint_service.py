@@ -121,9 +121,25 @@ class BdaBlueprintService:
 
         # Create a minimal blueprint to bootstrap the project
         # (BDA requires at least one blueprint for project creation)
+        bootstrap_schema = json.dumps(
+            {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "class": "Bootstrap",
+                "description": "Temporary bootstrap blueprint for project creation",
+                "type": "object",
+                "properties": {
+                    "placeholder": {
+                        "type": "string",
+                        "inferenceType": "explicit",
+                        "instruction": "Temporary placeholder field",
+                    }
+                },
+            }
+        )
         bootstrap_blueprint = self.blueprint_creator.create_blueprint(
-            document_type="bootstrap",
+            document_type="DOCUMENT",
             blueprint_name=f"{project_name}-bootstrap",
+            schema=bootstrap_schema,
         )
 
         if not bootstrap_blueprint:
@@ -612,6 +628,121 @@ class BdaBlueprintService:
 
         return schema, name_mapping
 
+    def _strip_idp_extension_fields(self, schema: dict) -> dict:
+        """
+        Recursively strip IDP-specific extension fields that BDA doesn't understand.
+
+        BDA's CreateBlueprint API rejects schemas containing unknown fields.
+        IDP schemas use custom extension fields (x-aws-idp-*) for evaluation,
+        classification, and other IDP-specific metadata. These must be removed
+        before sending to BDA.
+
+        Fields stripped:
+        - x-aws-idp-* (evaluation-method, list-item-description, document-type, etc.)
+        - format (JSON Schema format field not supported in BDA blueprint schemas)
+        - required (not used in BDA blueprint schemas at property level)
+
+        Args:
+            schema: JSON Schema dict to strip (modified in-place)
+
+        Returns:
+            The same schema dict with extension fields removed
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        # Collect keys to remove (can't modify dict during iteration)
+        keys_to_remove = []
+        for key in schema:
+            if key.startswith("x-aws-idp"):
+                keys_to_remove.append(key)
+
+        # Remove format field (BDA doesn't support JSON Schema format on properties)
+        if "format" in schema:
+            keys_to_remove.append("format")
+
+        # Remove required field (not used in BDA blueprint property definitions)
+        if "required" in schema:
+            keys_to_remove.append("required")
+
+        for key in keys_to_remove:
+            removed_val = schema.pop(key)
+            logger.debug(f"Stripped field '{key}' (value: {removed_val})")
+
+        # Recurse into nested structures
+        for key, value in schema.items():
+            if isinstance(value, dict):
+                self._strip_idp_extension_fields(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._strip_idp_extension_fields(item)
+
+        return schema
+
+    def _sanitize_def_names(self, schema: dict) -> dict:
+        """
+        Sanitize $defs / definitions key names that contain special characters.
+
+        BDA blueprint definition names must not contain spaces, commas, or other
+        special characters. This method sanitizes the keys and updates all $ref
+        paths that reference them.
+
+        Args:
+            schema: JSON Schema dict (modified in-place)
+
+        Returns:
+            The same schema dict with sanitized definition key names
+        """
+        import re
+
+        defs_field = (
+            "$defs"
+            if "$defs" in schema
+            else "definitions"
+            if "definitions" in schema
+            else None
+        )
+        if not defs_field:
+            return schema
+
+        defs = schema[defs_field]
+        ref_prefix = f"#/{defs_field}/"
+
+        # Build mapping of old name -> new name
+        name_mapping = {}
+        for def_name in list(defs.keys()):
+            sanitized = re.sub(r"[^a-zA-Z0-9_-]", "", def_name)
+            if sanitized != def_name:
+                name_mapping[def_name] = sanitized
+                logger.info(f"Sanitized definition name: '{def_name}' -> '{sanitized}'")
+
+        # Rename definition keys
+        for old_name, new_name in name_mapping.items():
+            defs[new_name] = defs.pop(old_name)
+
+        # Update all $ref paths in the schema
+        if name_mapping:
+            self._update_ref_paths(schema, ref_prefix, name_mapping)
+
+        return schema
+
+    def _update_ref_paths(self, obj: any, ref_prefix: str, name_mapping: dict) -> None:
+        """Recursively update $ref paths based on definition name mapping."""
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_val = obj["$ref"]
+                if ref_val.startswith(ref_prefix):
+                    old_def_name = ref_val[len(ref_prefix) :]
+                    if old_def_name in name_mapping:
+                        obj["$ref"] = f"{ref_prefix}{name_mapping[old_def_name]}"
+                        logger.debug(f"Updated $ref: '{ref_val}' -> '{obj['$ref']}'")
+            for value in obj.values():
+                self._update_ref_paths(value, ref_prefix, name_mapping)
+        elif isinstance(obj, list):
+            for item in obj:
+                self._update_ref_paths(item, ref_prefix, name_mapping)
+
     def _transform_json_schema_to_bedrock_blueprint(self, json_schema: dict) -> dict:
         """
         Transform JSON Schema (draft 2020-12) to BDA blueprint format (draft-07).
@@ -627,6 +758,8 @@ class BdaBlueprintService:
         - Object/array types do NOT get these fields
         - Array properties MUST have "instruction" field
         - Property names must not contain special characters like &, /
+        - No IDP extension fields (x-aws-idp-*) allowed
+        - No JSON Schema 'format' or 'required' fields allowed
 
         Args:
             json_schema: JSON Schema from configuration (should already be sanitized)
@@ -639,6 +772,24 @@ class BdaBlueprintService:
         """
         # Work on a deep copy to avoid mutating the input
         schema_copy = deepcopy(json_schema)
+
+        # Extract class name BEFORE stripping extension fields, since x-aws-idp-document-type
+        # is used as a fallback for the "class" field in the BDA blueprint
+        preserved_class = schema_copy.get(
+            ID_FIELD, schema_copy.get(X_AWS_IDP_DOCUMENT_TYPE, "Document")
+        )
+
+        # Strip IDP-specific extension fields that BDA doesn't understand
+        # This MUST happen before transformation to prevent x-aws-idp-*, format,
+        # and required fields from leaking into the BDA blueprint schema
+        self._strip_idp_extension_fields(schema_copy)
+
+        # Restore $id so _create_base_blueprint_structure can use it for the "class" field
+        if ID_FIELD not in schema_copy:
+            schema_copy[ID_FIELD] = preserved_class
+
+        # Sanitize $defs key names (remove spaces, commas, etc.)
+        self._sanitize_def_names(schema_copy)
 
         # Validate array properties have instruction field
         self._validate_array_instruction_requirements(schema_copy)
@@ -1799,6 +1950,10 @@ class BdaBlueprintService:
                     blueprints_updated=blueprints_updated,
                 )
 
+                # Remove any remaining AWS standard blueprints from the project
+                # so the project only contains custom blueprints matching the IDP config
+                self._remove_aws_standard_blueprints_from_project()
+
             # Save updated classes if any were added from BDA or if any were sanitized
             if len(classess_added) > 0 or classes_modified:
                 if len(classess_added) > 0:
@@ -2039,6 +2194,44 @@ class BdaBlueprintService:
                 "failed_count": 0,
                 "details": [],
             }
+
+    def _remove_aws_standard_blueprints_from_project(self):
+        """
+        Remove AWS standard blueprints from the BDA project's custom output configuration.
+
+        When syncing IDP → BDA, the project should only contain custom blueprints
+        that match the IDP config. AWS standard blueprints (with 'aws:blueprint' in ARN)
+        that were added during initial project creation should be disassociated.
+        """
+        try:
+            response = self.blueprint_creator.list_blueprints(
+                self.dataAutomationProjectArn, "LIVE"
+            )
+            all_project_blueprints = response.get("blueprints", [])
+
+            # Filter out AWS standard blueprints
+            custom_only = [
+                bp
+                for bp in all_project_blueprints
+                if "aws:blueprint" not in bp.get("blueprintArn", "")
+            ]
+
+            removed_count = len(all_project_blueprints) - len(custom_only)
+            if removed_count > 0:
+                logger.info(
+                    f"Removing {removed_count} AWS standard blueprints from project"
+                )
+                self.blueprint_creator.update_project_with_custom_configurations(
+                    self.dataAutomationProjectArn,
+                    customConfiguration={"blueprints": custom_only},
+                )
+            else:
+                logger.debug("No AWS standard blueprints to remove from project")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to remove AWS standard blueprints from project: {e}"
+            )
 
     def _synchronize_deletes(self, existing_blueprints, blueprints_updated):
         # remove all blueprints which are not in custom class
