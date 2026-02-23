@@ -3,17 +3,13 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-> **⚠️ IMPORTANT: Pattern 2 Only**
->
-> Capacity Planning is **only available for Pattern 2** (Textract + Bedrock) deployments. This feature is not supported for:
-> - **Pattern 1** (BDA - Bedrock Data Automation)
-> - **Pattern 3** (Textract + UDOP + Bedrock)
->
-> The Capacity Planning navigation link will be automatically hidden for Pattern 1 and Pattern 3 deployments.
-
 ## Overview
 
 The GenAI IDP accelerator includes comprehensive capacity planning capabilities to help you optimize document processing performance, predict resource requirements, and ensure your system can handle expected workloads. This system provides real-time capacity analysis, AWS service quota recommendations, and performance optimization guidance.
+
+
+https://github.com/user-attachments/assets/6e668c2f-c6dc-490e-a4ce-10c533cd330e
+
 
 **This feature is designed specifically for Pattern 2** due to its well-defined processing steps (OCR, Classification, Extraction, Assessment, Summarization) and predictable Bedrock model quota requirements.
 

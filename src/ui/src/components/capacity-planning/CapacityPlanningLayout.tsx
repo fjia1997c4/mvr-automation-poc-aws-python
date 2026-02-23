@@ -277,6 +277,7 @@ const CapacityPlanningLayout = () => {
   const [selectedDocuments, setSelectedDocuments] = useState<RecentDocument[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isDateRangeModalVisible, setIsDateRangeModalVisible] = useState(false);
+  const [latencyTimeRange, setLatencyTimeRange] = useState<SelectOption>({ label: 'Last 24 hours', value: '24' });
 
   // Helper function to add notifications
   const addNotification = (type: string, content: React.ReactNode, header: string | null = null, dismissible = true) => {
@@ -1390,6 +1391,7 @@ const CapacityPlanningLayout = () => {
         pattern: getDeployedPattern().toLowerCase(), // API expects lowercase pattern name
         timeSlots: JSON.stringify(timeSlotsForAPI),
         granularAssessmentEnabled: isGranularAssessmentEnabled(),
+        latencyMetricsHours: parseInt(latencyTimeRange.value, 10),
       };
 
       // Validate input before sending
@@ -1495,6 +1497,16 @@ const CapacityPlanningLayout = () => {
                 p90
                 p95
                 p99
+                procP50
+                procP75
+                procP90
+                procP95
+                procP99
+                queueP50
+                queueP75
+                queueP90
+                queueP95
+                queueP99
                 baseLatency
                 queueLatency
                 totalLatency
@@ -3588,61 +3600,155 @@ const CapacityPlanningLayout = () => {
 
             {/* Latency Distribution Histogram */}
             {results?.success && results?.latencyDistribution && (
-              <Container header={<Header variant="h2">Processing Latency Distribution</Header>}>
+              <Container
+                header={
+                  <Header
+                    variant="h2"
+                    actions={
+                      <Select
+                        selectedOption={latencyTimeRange}
+                        onChange={({ detail }) => setLatencyTimeRange(detail.selectedOption as SelectOption)}
+                        options={[
+                          { label: 'Last 4 hours', value: '4' },
+                          { label: 'Last 12 hours', value: '12' },
+                          { label: 'Last 24 hours', value: '24' },
+                          { label: 'Last 2 days', value: '48' },
+                          { label: 'Last 7 days', value: '168' },
+                          { label: 'Last 30 days', value: '720' },
+                          { label: 'All time', value: '8760' },
+                        ]}
+                      />
+                    }
+                  >
+                    Processing Latency Distribution
+                  </Header>
+                }
+              >
                 <SpaceBetween size="l">
                   <Box>
                     <div style={{ marginBottom: '16px' }}>
                       <strong>Expected Processing Times:</strong> Based on actual processing metrics from your processed documents
                     </div>
 
-                    {/* Latency Bars */}
+                    {/* Stacked Latency Bars: Processing (blue) + Queue (orange) with SLA marker */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {(() => {
                         const latency = results.latencyDistribution;
                         const percentiles = [
-                          { label: 'P50 (Median)', key: 'p50', description: '50% of documents complete within' },
-                          { label: 'P75', key: 'p75', description: '75% of documents complete within' },
-                          { label: 'P90', key: 'p90', description: '90% of documents complete within' },
-                          { label: 'P95', key: 'p95', description: '95% of documents complete within' },
-                          { label: 'P99 (Worst Case)', key: 'p99', description: '99% of documents complete within' },
+                          {
+                            label: 'P50 (Median)',
+                            pKey: 'procP50',
+                            qKey: 'queueP50',
+                            tKey: 'p50',
+                            description: '50% of documents complete within',
+                          },
+                          { label: 'P75', pKey: 'procP75', qKey: 'queueP75', tKey: 'p75', description: '75% of documents complete within' },
+                          { label: 'P90', pKey: 'procP90', qKey: 'queueP90', tKey: 'p90', description: '90% of documents complete within' },
+                          { label: 'P95', pKey: 'procP95', qKey: 'queueP95', tKey: 'p95', description: '95% of documents complete within' },
+                          {
+                            label: 'P99 (Worst Case)',
+                            pKey: 'procP99',
+                            qKey: 'queueP99',
+                            tKey: 'p99',
+                            description: '99% of documents complete within',
+                          },
                         ];
 
-                        // Parse values and use max allowed latency as scaling reference
-                        const values = percentiles.map((p) => parseFloat(String(latency[p.key] || '0').replace('s', '')));
                         const maxAllowed = parseFloat(latency.maxAllowed?.replace('s', '') || '300');
-                        // Use max allowed latency as the scaling reference so bars show absolute differences
-                        const scalingReference = maxAllowed;
+                        // Scale against max value across all percentiles OR maxAllowed, whichever is larger
+                        const allTotals = percentiles.map((p) => parseFloat(String(latency[p.tKey] || '0').replace('s', '')));
+                        const maxValue = Math.max(...allTotals, maxAllowed);
+                        const scalingReference = maxValue > 0 ? maxValue : 1;
+                        // SLA line position as percentage of the scale
+                        const slaPosition = (maxAllowed / scalingReference) * 100;
 
-                        return percentiles.map((percentile, index) => {
-                          const value = values[index];
-                          // Scale against max allowed latency instead of max value in this response
-                          const percentage = scalingReference > 0 ? Math.min((value / scalingReference) * 100, 100) : 0;
-                          const exceedsLimit = value > maxAllowed;
+                        return percentiles.map((percentile) => {
+                          const totalFromApi = parseFloat(String(latency[percentile.tKey] || '0').replace('s', ''));
+                          const rawProcVal = parseFloat(String(latency[percentile.pKey] || '0').replace('s', ''));
+                          const rawQueueVal = parseFloat(String(latency[percentile.qKey] || '0').replace('s', ''));
+                          // Fallback: if separate proc/queue fields aren't available, use total as processing
+                          const hasSeparateFields = rawProcVal > 0 || rawQueueVal > 0;
+                          const procVal = hasSeparateFields ? rawProcVal : totalFromApi;
+                          const queueVal = hasSeparateFields ? rawQueueVal : 0;
+                          const totalVal = hasSeparateFields ? procVal + queueVal : totalFromApi;
+                          const exceedsLimit = totalVal > maxAllowed;
 
-                          // Color coding based on SLA compliance
-                          // Green if latency <= SLA target, Red if latency > SLA target
-                          const barColor = exceedsLimit ? '#d13212' : '#037f0c';
+                          // Calculate widths as percentage of the scaling reference
+                          const procWidth = (procVal / scalingReference) * 100;
+                          const queueWidth = (queueVal / scalingReference) * 100;
 
                           return (
-                            <div key={percentile.key} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div key={percentile.tKey} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <div style={{ minWidth: '120px', fontSize: '14px', fontWeight: '500' }}>{percentile.label}</div>
-                              <div style={{ flex: 1, position: 'relative' }}>
+                              <div
+                                style={{
+                                  flex: 1,
+                                  position: 'relative',
+                                  height: '28px',
+                                  background: '#f0f0f0',
+                                  borderRadius: '4px',
+                                  overflow: 'visible',
+                                }}
+                              >
+                                {/* Processing time segment (blue) */}
                                 <div
                                   style={{
-                                    width: `${Math.max(percentage, 5)}%`,
-                                    height: '24px',
-                                    backgroundColor: barColor,
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    paddingLeft: '8px',
-                                    color: 'white',
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: `${Math.max(procWidth, 2)}%`,
+                                    backgroundColor: '#0972D3',
+                                    borderRadius: queueVal > 0 ? '4px 0 0 4px' : '4px',
+                                    zIndex: 2,
+                                  }}
+                                  title={`Processing: ${procVal.toFixed(1)}s`}
+                                />
+                                {/* Queue delay segment (orange) */}
+                                {queueVal > 0 && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${procWidth}%`,
+                                      top: 0,
+                                      bottom: 0,
+                                      width: `${Math.max(queueWidth, 1)}%`,
+                                      backgroundColor: '#f89256',
+                                      borderRadius: '0 4px 4px 0',
+                                      zIndex: 2,
+                                    }}
+                                    title={`Queue: ${queueVal.toFixed(1)}s`}
+                                  />
+                                )}
+                                {/* SLA vertical marker line */}
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${Math.min(slaPosition, 100)}%`,
+                                    top: '-4px',
+                                    bottom: '-4px',
+                                    width: '2px',
+                                    backgroundColor: '#d13212',
+                                    zIndex: 3,
+                                  }}
+                                  title={`SLA Target: ${maxAllowed}s`}
+                                />
+                                {/* Total value label */}
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${Math.min(procWidth + queueWidth + 1, 85)}%`,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
                                     fontSize: '12px',
                                     fontWeight: '600',
-                                    minWidth: '60px',
+                                    color: exceedsLimit ? '#d13212' : '#037f0c',
+                                    zIndex: 4,
+                                    whiteSpace: 'nowrap',
+                                    paddingLeft: '6px',
                                   }}
                                 >
-                                  {String(latency[percentile.key])}
+                                  {totalVal.toFixed(1)}s {exceedsLimit ? '❌' : '✅'}
                                 </div>
                               </div>
                               <div style={{ minWidth: '200px', fontSize: '12px', color: '#5f6b7a' }}>{percentile.description}</div>
@@ -3650,6 +3756,52 @@ const CapacityPlanningLayout = () => {
                           );
                         });
                       })()}
+                      {/* Legend */}
+                      <div
+                        style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#5f6b7a', marginTop: '4px', paddingLeft: '132px' }}
+                      >
+                        <span>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: '12px',
+                              height: '12px',
+                              backgroundColor: '#0972D3',
+                              borderRadius: '2px',
+                              marginRight: '4px',
+                              verticalAlign: 'middle',
+                            }}
+                          />{' '}
+                          Processing
+                        </span>
+                        <span>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: '12px',
+                              height: '12px',
+                              backgroundColor: '#f89256',
+                              borderRadius: '2px',
+                              marginRight: '4px',
+                              verticalAlign: 'middle',
+                            }}
+                          />{' '}
+                          Queue Delay
+                        </span>
+                        <span>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: '2px',
+                              height: '14px',
+                              backgroundColor: '#d13212',
+                              marginRight: '4px',
+                              verticalAlign: 'middle',
+                            }}
+                          />{' '}
+                          SLA Target ({results.latencyDistribution?.maxAllowed})
+                        </span>
+                      </div>
                     </div>
 
                     {/* Summary Information - Only Real Measured Data */}

@@ -88,7 +88,14 @@ def get_real_latency_metrics(pattern):
         
         # Query recent documents with pagination support
         # Use attribute_exists with correct attribute name (Metering, not meteringData)
-        print(f"🔍 Scanning DynamoDB table: {table_name} for documents with Metering data")
+        # Time filter: only use recent documents for latency metrics (default 24 hours)
+        # Read latencyMetricsHours from input if provided (passed from UI time range selector)
+        # Falls back to environment variable, then default 24 hours
+        latency_metrics_hours = int(os.environ.get("LATENCY_METRICS_HOURS", "24"))
+        min_recent_docs = int(os.environ.get("LATENCY_METRICS_MIN_DOCS", "5"))
+        cutoff_time = datetime.utcnow() - timedelta(hours=latency_metrics_hours)
+        cutoff_iso = cutoff_time.strftime('%Y-%m-%dT%H:%M:%S')
+        print(f"🔍 Scanning DynamoDB table: {table_name} for documents with Metering data (last {latency_metrics_hours}h, cutoff: {cutoff_iso})")
 
         # Pagination parameters
         MAX_ITEMS_TO_PROCESS = 200  # Process up to 200 documents
@@ -157,6 +164,24 @@ def get_real_latency_metrics(pattern):
         
         if not items:
             raise ValueError("No processed documents found with metering data. Please process some documents first to enable capacity planning.")
+        
+        # Apply time filter: only use documents completed within the configured time window
+        # This prevents old outliers from skewing latency percentiles
+        all_items_count = len(items)
+        recent_items = []
+        for item in items:
+            ct = item.get('CompletionTime') or item.get('LastEventTime') or item.get('InitialEventTime')
+            if ct:
+                ct_str = str(ct)
+                # Simple string comparison works for ISO timestamps (YYYY-MM-DD...)
+                if ct_str >= cutoff_iso:
+                    recent_items.append(item)
+        
+        if len(recent_items) >= min_recent_docs:
+            print(f"📊 Time filter: Using {len(recent_items)} recent documents (last {latency_metrics_hours}h) out of {all_items_count} total")
+            items = recent_items
+        else:
+            print(f"⚠️ Time filter: Only {len(recent_items)} recent documents found (min {min_recent_docs} required). Using all {all_items_count} documents.")
         
         # Extract processing times from metering data
         # Structure: "OCR/lambda/duration": {"gb_seconds": 61.6}
@@ -984,6 +1009,18 @@ def calculate_latency_distribution(
         "p90": f"{p90_seconds:.1f}s",
         "p95": f"{p95_seconds:.1f}s",
         "p99": f"{p99_seconds:.1f}s",
+        # Separate processing time percentiles (for stacked bar UI)
+        "procP50": f"{proc_p50:.1f}s",
+        "procP75": f"{proc_p75:.1f}s",
+        "procP90": f"{proc_p90:.1f}s",
+        "procP95": f"{proc_p95:.1f}s",
+        "procP99": f"{proc_p99:.1f}s",
+        # Separate queue delay percentiles (for stacked bar UI)
+        "queueP50": f"{queue_p50:.1f}s",
+        "queueP75": f"{queue_p75:.1f}s",
+        "queueP90": f"{queue_p90:.1f}s",
+        "queueP95": f"{queue_p95:.1f}s",
+        "queueP99": f"{queue_p99:.1f}s",
         "maxAllowed": f"{max_allowed_minutes * 60:.1f}s",
         "baseLatency": f"{base_latency_seconds:.1f}s",
         "actualProcessingTime": f"{actual_processing_seconds:.1f}s",
@@ -1722,6 +1759,16 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             total_docs_per_hour += docs_per_hour_config
             total_pages_per_hour += docs_per_hour_config * avg_pages
             total_tokens_per_hour += doc_total_tokens * docs_per_hour_config
+
+        # Override LATENCY_METRICS_HOURS from UI input if provided
+        latency_metrics_hours_input = input_data.get("latencyMetricsHours")
+        if latency_metrics_hours_input:
+            os.environ["LATENCY_METRICS_HOURS"] = str(int(latency_metrics_hours_input))
+            # Clear cache so new time range takes effect
+            global _processing_times_cache, _cache_expiry
+            _processing_times_cache = {}
+            _cache_expiry = 0
+            print(f"🔍 Using latency metrics time range from UI: {latency_metrics_hours_input}h")
 
         # Calculate latency distribution based on processing pattern and load
         latency_distribution = calculate_latency_distribution(

@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.15]
+
 ### Added
 
 - **Capacity Planning (Beta - Pattern 2 Only)**
@@ -30,6 +32,11 @@ SPDX-License-Identifier: MIT-0
 
 - **Fixed DynamoDB 400KB item size limit blocking configs with 45+ document classes** — Configuration data is now gzip-compressed before storing to DynamoDB, achieving 37-95x compression ratios. Supports 3,000+ document classes within the 400KB limit. Fully backward compatible with existing deployments. ([#200](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/200), [#201](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/201))
 - **Fixed Processing Flow chart using active stack config instead of the document's actual config version** for determining disabled steps (assessment, summarization, etc.)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.16.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.16.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.16.yaml`
 
 ## [0.4.15]
 
