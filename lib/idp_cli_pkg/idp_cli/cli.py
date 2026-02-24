@@ -1133,18 +1133,34 @@ def _process_impl(
             )
         else:
             # Handle manifest/directory/S3 processing
-            batch_result = processor.process_batch(
-                manifest_path=manifest,
-                directory=directory,
-                s3_uri=s3_uri,
-                batch_id=batch_id,
-                file_pattern=file_pattern,
-                recursive=recursive,
-                config_path=config,
-                batch_prefix=batch_prefix,
-                number_of_files=number_of_files,
-                config_version=config_version,
-            )
+            if manifest:
+                batch_result = processor.process_batch(
+                    manifest_path=manifest,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif directory:
+                batch_result = processor.process_batch_from_directory(
+                    dir_path=directory,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif s3_uri:
+                batch_result = processor.process_batch_from_s3_uri(
+                    s3_uri=s3_uri,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                )
+            else:
+                raise ValueError("No input source specified")
 
         # Show results
         console.print()

@@ -1,0 +1,53 @@
+{
+  "BackupDate": "2026-02-24T03:52:00Z",
+  "RoleName": "genaiic-sdlc-codepipeline-CodeBuildRole-FJmWtjPXKjYq",
+  "AttachedManagedPolicies": [
+    {
+      "PolicyName": "PowerUserAccess",
+      "PolicyArn": "arn:aws:iam::aws:policy/PowerUserAccess"
+    }
+  ],
+  "InlinePolicies": {
+    "LimitedIAMAccess": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Action": [
+            "iam:CreateInstanceProfile",
+            "iam:List*",
+            "iam:Untag*",
+            "iam:Tag*",
+            "iam:RemoveRoleFromInstanceProfile",
+            "iam:DeletePolicy",
+            "iam:CreateRole",
+            "iam:AttachRolePolicy",
+            "iam:PutRolePolicy",
+            "iam:AddRoleToInstanceProfile",
+            "iam:PassRole",
+            "iam:Get*",
+            "iam:DetachRolePolicy",
+            "iam:DeleteRolePolicy",
+            "iam:CreatePolicyVersion",
+            "iam:DeleteInstanceProfile",
+            "iam:DeleteRole",
+            "iam:UpdateRoleDescription",
+            "iam:CreatePolicy",
+            "iam:CreateServiceLinkedRole",
+            "iam:UpdateRole",
+            "iam:DeleteServiceLinkedRole",
+            "iam:DeletePolicyVersion",
+            "iam:SetDefaultPolicyVersion",
+            "iam:UpdateAssumeRolePolicy"
+          ],
+          "Resource": "*",
+          "Effect": "Allow"
+        }
+      ]
+    },
+    "CodeBuildS3Access": "See CloudFormation stack for details",
+    "CodeBuildLogs": "See CloudFormation stack for details",
+    "CodeBuildBedrockAccess": "See CloudFormation stack for details",
+    "CodeBuildKMSAccess": "See CloudFormation stack for details"
+  },
+  "Note": "This backup was created before updating to least-privilege scoped policies. The role previously had PowerUserAccess (broad permissions) + inline IAM policies with wildcard resources."
+}

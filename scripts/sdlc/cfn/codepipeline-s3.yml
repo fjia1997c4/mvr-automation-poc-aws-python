@@ -143,6 +143,11 @@ Resources:
                 Resource: 
                   - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/idp-*'
                   - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/idp-*/*'
+              # ValidateTemplate doesn't support resource-level permissions
+              - Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
         - PolicyName: LimitedIAMAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -230,6 +235,14 @@ Resources:
                 Action:
                   - sts:GetCallerIdentity
                 Resource: '*'
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
 
   ArtifactBucket:
     Type: 'AWS::S3::Bucket'
