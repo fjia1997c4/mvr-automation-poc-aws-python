@@ -1133,23 +1133,41 @@ def _process_impl(
             )
         else:
             # Handle manifest/directory/S3 processing
-            batch_result = processor.process_batch(
-                manifest_path=manifest,
-                directory=directory,
-                s3_uri=s3_uri,
-                batch_id=batch_id,
-                file_pattern=file_pattern,
-                recursive=recursive,
-                config_path=config,
-                batch_prefix=batch_prefix,
-                number_of_files=number_of_files,
-                config_version=config_version,
-            )
+            if manifest:
+                batch_result = processor.process_batch(
+                    manifest_path=manifest,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif directory:
+                batch_result = processor.process_batch_from_directory(
+                    dir_path=directory,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif s3_uri:
+                batch_result = processor.process_batch_from_s3_uri(
+                    s3_uri=s3_uri,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                )
+            else:
+                raise ValueError("No input source specified")
 
         # Show results
         console.print()
         console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(f"Documents queued: {batch_result['documents_queued']}")
+        console.print(
+            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
+        )
 
         if batch_result.get("uploaded", 0) > 0:
             console.print(f"Files uploaded: {batch_result['uploaded']}")
@@ -1161,7 +1179,10 @@ def _process_impl(
         console.print()
 
         # Monitor if requested
-        if monitor and batch_result["documents_queued"] > 0:
+        if (
+            monitor
+            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
+        ):
             _monitor_progress(
                 stack_name=stack_name,
                 batch_id=batch_result["batch_id"],
