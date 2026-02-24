@@ -1165,7 +1165,9 @@ def _process_impl(
         # Show results
         console.print()
         console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}")
+        console.print(
+            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
+        )
 
         if batch_result.get("uploaded", 0) > 0:
             console.print(f"Files uploaded: {batch_result['uploaded']}")
@@ -1177,7 +1179,10 @@ def _process_impl(
         console.print()
 
         # Monitor if requested
-        if monitor and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0:
+        if (
+            monitor
+            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
+        ):
             _monitor_progress(
                 stack_name=stack_name,
                 batch_id=batch_result["batch_id"],
