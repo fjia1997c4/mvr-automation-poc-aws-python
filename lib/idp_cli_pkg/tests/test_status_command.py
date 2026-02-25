@@ -112,7 +112,7 @@ class TestStatusCommandSearch:
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.show_final_status_summary.return_value = 0
 
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "status",
@@ -157,7 +157,7 @@ class TestStatusCommandSearch:
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.show_final_status_summary.return_value = 0
 
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 ["status", "--stack-name", "test-stack", "--batch-id", "batch-123"],
             )
@@ -251,7 +251,7 @@ class TestStatusCommandTiming:
             },
         }
 
-        result = runner.invoke(
+        runner.invoke(
             cli,
             [
                 "status",
@@ -301,7 +301,7 @@ class TestStatusCommandTiming:
             },
         }
 
-        result = runner.invoke(
+        runner.invoke(
             cli,
             [
                 "status",
@@ -359,7 +359,7 @@ class TestStatusCommandDetails:
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.show_final_status_summary.return_value = 0
 
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "status",
@@ -402,7 +402,7 @@ class TestStatusCommandDocumentId:
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.show_final_status_summary.return_value = 0
 
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "status",
@@ -464,7 +464,7 @@ class TestStatusCommandOptions:
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.format_status_json.return_value = '{"status": "COMPLETED"}'
 
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "status",
@@ -517,7 +517,7 @@ class TestStatusCommandIntegration:
             "valid_count": 2,
         }
 
-        result = runner.invoke(
+        runner.invoke(
             cli,
             [
                 "status",
