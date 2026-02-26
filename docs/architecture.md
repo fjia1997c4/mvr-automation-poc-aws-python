@@ -110,10 +110,7 @@ This pattern also supports few-shot examples for classification and extraction. 
 ### Pattern 3: Textract + UDOP + Bedrock
 OCR → UDOP Classification (SageMaker) → Bedrock Extraction
 
-![Pattern 3 Architecture](../images/IDP-Pattern3-UDOP.drawio.png)
 *Pattern 3 uses Amazon Textract for OCR, a UDOP model deployed on Amazon SageMaker for classification, and AWS Bedrock for extraction tasks.*
-
-For detailed information about Pattern 3, see [pattern-3.md](./pattern-3.md).
 
 ## Pattern Selection and Deployment
 
@@ -128,7 +125,6 @@ IDPPattern:
   AllowedValues:
     - Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)
     - Pattern2 - Packet processing with Textract and Bedrock
-    - Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock
   Description: Choose from built-in IDP workflow patterns
 ```
 
@@ -138,7 +134,6 @@ When deployed, the main stack uses conditions to create the appropriate nested s
 Conditions:
   IsPattern1: !Equals [!Ref IDPPattern, "Pattern1"]
   IsPattern2: !Equals [!Ref IDPPattern, "Pattern2"]
-  IsPattern3: !Equals [!Ref IDPPattern, "Pattern3"]
 
 Resources:
   PATTERN1STACK:

@@ -105,7 +105,6 @@ The GenAI IDP Accelerator uses a **system defaults** architecture where configur
 1. **System defaults** are loaded first from `lib/idp_common_pkg/idp_common/config/system_defaults/`:
    - `pattern-1.yaml` - BDA pattern defaults
    - `pattern-2.yaml` - Bedrock LLM pattern defaults
-   - `pattern-3.yaml` - UDOP pattern defaults
 
 2. **User configurations** are merged on top, overriding only the specified values
 
@@ -280,7 +279,6 @@ Key parameters that can be configured during CloudFormation deployment:
 - `IDPPattern`: Select processing pattern:
   - Pattern1: Packet or Media processing with Bedrock Data Automation (BDA)
   - Pattern2: Packet processing with Textract and Bedrock
-  - Pattern3: Packet processing with Textract, SageMaker(UDOP), and Bedrock
 
 ### Pattern-Specific Parameters
 - **Pattern 1 (BDA)**
@@ -293,8 +291,6 @@ Key parameters that can be configured during CloudFormation deployment:
   - `Pattern2CustomExtractionModelARN`: Optional custom fine-tuned extraction model (Coming Soon)
 
 - **Pattern 3 (Textract + UDOP + Bedrock)**
-  - `Pattern3UDOPModelArtifactPath`: S3 path for UDOP model artifact
-  - `Pattern3Configuration`: Configuration preset to use
 
 ### Optional Features
 - `EvaluationBaselineBucketName`: Optional existing bucket for ground truth data
@@ -304,7 +300,7 @@ Key parameters that can be configured during CloudFormation deployment:
 - `BedrockGuardrailId`: Optional Bedrock Guardrail ID to apply
 - `BedrockGuardrailVersion`: Version of Bedrock Guardrail to use
 
-For details on specific patterns, see [pattern-1.md](pattern-1.md), [pattern-2.md](pattern-2.md), and [pattern-3.md](pattern-3.md).
+For details on specific patterns, see [pattern-1.md](pattern-1.md), [pattern-2.md](pattern-2.md).
 
 ## High Volume Processing
 

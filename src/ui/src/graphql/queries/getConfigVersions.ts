@@ -13,6 +13,9 @@ const getConfigVersions: DocumentNode = gql`
         createdAt
         updatedAt
         description
+        bdaProjectArn
+        bdaSyncStatus
+        bdaLastSyncedAt
       }
       error {
         type

@@ -304,13 +304,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
       return;
     }
 
-    // Check if Pattern 1 and show confirmation for auto-sync to BDA (unless skipping)
-    if (isPattern1 && !skipSyncConfirmation) {
+    // Check if BDA-enabled pattern and show confirmation for auto-sync to BDA (unless skipping)
+    if ((isPattern1 || mergedConfig?.use_bda) && !skipSyncConfirmation) {
+      setActivateVersionTarget(versionName);
       setShowActivateVersionConfirmModal(true);
       return;
     }
 
-    // Direct activation for non-Pattern 1 or when skipping confirmation
+    // Direct activation for non-BDA or when skipping confirmation
     await performActivateVersion(versionName);
   };
 
@@ -455,6 +456,13 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showSyncToBdaConfirmModal, setShowSyncToBdaConfirmModal] = useState(false);
   const [showActivateVersionConfirmModal, setShowActivateVersionConfirmModal] = useState(false);
+  const [activateVersionTarget, setActivateVersionTarget] = useState<string | null>(null); // Track which version to activate
+
+  // BDA project selection modal state
+  const [bdaSyncMode, setBdaSyncMode] = useState<string>('create'); // 'linked', 'create', or 'existing'
+  const [bdaProjectArnInput, setBdaProjectArnInput] = useState('');
+  const [showSyncFromBdaModal, setShowSyncFromBdaModal] = useState(false);
+  const [syncFromBdaArnInput, setSyncFromBdaArnInput] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
@@ -537,8 +545,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = (settings?.IDPPattern as string | undefined)?.includes('Pattern1');
 
-  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
-  const isPattern2 = (settings?.IDPPattern as string | undefined)?.includes('Pattern2');
+  // Rule Schema/Validation is available in all modes (Unified, Pattern2, etc.) - only excluded for Pattern1-only
+  const showRuleSchema = !isPattern1;
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -1464,23 +1472,29 @@ const ConfigurationLayout = (): React.JSX.Element => {
     }
   };
 
-  // Handler for BDA/IDP sync
-  // Handler for BDA/IDP sync with direction support
-  const handleSyncBdaIdp = async (direction = 'bidirectional'): Promise<void> => {
+  // Handler for BDA/IDP sync with direction support and optional BDA project ARN
+  const handleSyncBdaIdp = async (direction = 'bidirectional', bdaProjectArn?: string): Promise<void> => {
     setSyncingDirection(direction);
     setSyncSuccess(false);
     setSyncSuccessMessage('');
     setSyncError(null);
 
     try {
-      logger.debug(`Starting BDA/IDP sync with direction: ${direction}...`);
+      logger.debug(`Starting BDA/IDP sync with direction: ${direction}, bdaProjectArn: ${bdaProjectArn || 'auto'}...`);
+
+      // Build variables - always pass saveArn: true to persist the project ARN
+      const variables: Record<string, unknown> = {
+        versionName: currentVersionName,
+        direction,
+        saveArn: true,
+      };
+      if (bdaProjectArn) {
+        variables.bdaProjectArn = bdaProjectArn;
+      }
 
       const result = await client.graphql({
         query: syncBdaIdpMutation as unknown as string,
-        variables: {
-          versionName: currentVersionName,
-          direction,
-        },
+        variables,
       });
 
       logger.debug('Sync API response:', result);
@@ -2121,12 +2135,30 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 <Button variant="normal" onClick={() => fetchConfiguration(currentVersionName)} loading={refreshing} iconName="refresh">
                   Refresh
                 </Button>
-                {isPattern1 && (
+                {(isPattern1 || mergedConfig?.use_bda) && (
                   <>
-                    <Button variant="normal" onClick={() => handleSyncBdaIdp('bda_to_idp')} loading={syncingDirection === 'bda_to_idp'}>
+                    <Button
+                      variant="normal"
+                      onClick={() => {
+                        if (currentVersion?.bdaProjectArn) {
+                          handleSyncBdaIdp('bda_to_idp');
+                        } else {
+                          setSyncFromBdaArnInput('');
+                          setShowSyncFromBdaModal(true);
+                        }
+                      }}
+                      loading={syncingDirection === 'bda_to_idp'}
+                    >
                       Sync from BDA
                     </Button>
-                    <Button variant="normal" onClick={() => setShowSyncToBdaConfirmModal(true)} loading={syncingDirection === 'idp_to_bda'}>
+                    <Button
+                      variant="normal"
+                      onClick={() => {
+                        setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                        setShowSyncToBdaConfirmModal(true);
+                      }}
+                      loading={syncingDirection === 'idp_to_bda'}
+                    >
                       Sync to BDA
                     </Button>
                   </>
@@ -2236,6 +2268,34 @@ const ConfigurationLayout = (): React.JSX.Element => {
             </Alert>
           )}
 
+          {/* BDA Project Status Banner */}
+          {(isPattern1 || mergedConfig?.use_bda) && currentVersion && (
+            <>
+              {currentVersion.bdaProjectArn ? (
+                <Alert type="info" header="BDA Project Linked">
+                  BDA project:{' '}
+                  <Box variant="code" display="inline" fontSize="body-s">
+                    {currentVersion.bdaProjectArn as string}
+                  </Box>
+                  {currentVersion.bdaSyncStatus && (
+                    <>
+                      {' '}
+                      &mdash; Status: <strong>{currentVersion.bdaSyncStatus as string}</strong>
+                    </>
+                  )}
+                  {currentVersion.bdaLastSyncedAt && (
+                    <> &mdash; Last synced: {new Date(currentVersion.bdaLastSyncedAt as string).toLocaleString()}</>
+                  )}
+                </Alert>
+              ) : (
+                <Alert type="warning" header="BDA Enabled — No Project Linked">
+                  BDA is enabled but no BDA project is linked to this version. Use <strong>Sync to BDA</strong> to create or link a project,
+                  or <strong>Sync from BDA</strong> to import blueprints from an existing project.
+                </Alert>
+              )}
+            </>
+          )}
+
           {hasUnsavedChanges && currentVersionName !== 'default' && (
             <Alert
               type="info"
@@ -2267,7 +2327,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   currentVersionName={currentVersionName}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
-                  showRuleSchema={isPattern2}
+                  showRuleSchema={showRuleSchema}
                   versionDescription={versionDescription}
                   onDescriptionChange={setVersionDescription}
                   onSchemaChange={(schemaData: unknown, isDirty: boolean) => {
@@ -2482,24 +2542,46 @@ const ConfigurationLayout = (): React.JSX.Element => {
         {showCompareModal && compareData && <ConfigurationComparison versions={compareData.versions} configs={compareData.configs} />}
       </Modal>
 
-      {/* Sync to BDA Confirmation Modal */}
+      {/* Sync to BDA Project Selection Modal */}
       <Modal
         visible={showSyncToBdaConfirmModal}
-        onDismiss={() => setShowSyncToBdaConfirmModal(false)}
-        header="Confirm Sync to BDA"
+        onDismiss={() => {
+          setShowSyncToBdaConfirmModal(false);
+          setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+          setBdaProjectArnInput('');
+        }}
+        header="Sync to BDA"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowSyncToBdaConfirmModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowSyncToBdaConfirmModal(false);
+                  setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                  setBdaProjectArnInput('');
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={() => {
                   setShowSyncToBdaConfirmModal(false);
-                  handleSyncBdaIdp('idp_to_bda');
+                  let arnToUse: string;
+                  if (bdaSyncMode === 'linked') {
+                    arnToUse = currentVersion?.bdaProjectArn as string;
+                  } else if (bdaSyncMode === 'existing') {
+                    arnToUse = bdaProjectArnInput.trim();
+                  } else {
+                    arnToUse = 'CREATE_NEW';
+                  }
+                  handleSyncBdaIdp('idp_to_bda', arnToUse);
+                  setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                  setBdaProjectArnInput('');
                 }}
                 loading={syncingDirection === 'idp_to_bda'}
+                disabled={bdaSyncMode === 'existing' && !bdaProjectArnInput.trim()}
               >
                 Confirm Sync
               </Button>
@@ -2512,30 +2594,140 @@ const ConfigurationLayout = (): React.JSX.Element => {
             This will sync your IDP document classes to BDA blueprints and set <strong>{currentVersionName}</strong> as the active
             configuration version.
           </Alert>
+          <FormField label="BDA Project" description="Choose how to sync your configuration to BDA.">
+            <RadioGroup
+              value={bdaSyncMode}
+              onChange={({ detail }) => {
+                setBdaSyncMode(detail.value);
+                // If switching to existing and there's already a linked ARN, pre-fill it
+                if (detail.value === 'existing' && currentVersion?.bdaProjectArn && !bdaProjectArnInput) {
+                  setBdaProjectArnInput(currentVersion.bdaProjectArn as string);
+                }
+              }}
+              items={[
+                {
+                  value: 'linked',
+                  label: 'Sync to linked project',
+                  description: currentVersion?.bdaProjectArn
+                    ? `Update blueprints in the linked project: ${currentVersion.bdaProjectArn}`
+                    : 'No BDA project is linked to this version.',
+                  disabled: !currentVersion?.bdaProjectArn,
+                },
+                {
+                  value: 'create',
+                  label: 'Create a new BDA project',
+                  description: 'A new BDA project will be automatically created for this config version.',
+                },
+                {
+                  value: 'existing',
+                  label: 'Use a different BDA project',
+                  description: 'Enter the ARN of an existing BDA project to sync to.',
+                },
+              ]}
+            />
+          </FormField>
+          {bdaSyncMode === 'existing' && (
+            <FormField
+              label="BDA Project ARN"
+              description="Enter the ARN of the existing BDA Data Automation project."
+              errorText={bdaProjectArnInput && !bdaProjectArnInput.startsWith('arn:aws') ? 'ARN must start with arn:aws' : ''}
+            >
+              <Input
+                value={bdaProjectArnInput}
+                onChange={({ detail }) => setBdaProjectArnInput(detail.value)}
+                placeholder="arn:aws:bedrock:us-east-1:123456789012:data-automation-project/..."
+              />
+            </FormField>
+          )}
         </SpaceBetween>
       </Modal>
 
-      {/* Activate Version Confirmation Modal */}
+      {/* Sync from BDA — Prompt for BDA Project ARN (when no project linked) */}
+      <Modal
+        visible={showSyncFromBdaModal}
+        onDismiss={() => {
+          setShowSyncFromBdaModal(false);
+          setSyncFromBdaArnInput('');
+        }}
+        header="Sync from BDA"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowSyncFromBdaModal(false);
+                  setSyncFromBdaArnInput('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setShowSyncFromBdaModal(false);
+                  handleSyncBdaIdp('bda_to_idp', syncFromBdaArnInput.trim());
+                  setSyncFromBdaArnInput('');
+                }}
+                loading={syncingDirection === 'bda_to_idp'}
+                disabled={!syncFromBdaArnInput.trim() || !syncFromBdaArnInput.startsWith('arn:aws')}
+              >
+                Sync from BDA
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>
+            No BDA project is currently linked to this config version. Enter the ARN of the BDA project to import blueprints from. The
+            project will be linked to this version for future syncs.
+          </Box>
+          <FormField
+            label="BDA Project ARN"
+            description="Enter the ARN of the BDA Data Automation project to sync from."
+            errorText={syncFromBdaArnInput && !syncFromBdaArnInput.startsWith('arn:aws') ? 'ARN must start with arn:aws' : ''}
+          >
+            <Input
+              value={syncFromBdaArnInput}
+              onChange={({ detail }) => setSyncFromBdaArnInput(detail.value)}
+              placeholder="arn:aws:bedrock:us-east-1:123456789012:data-automation-project/..."
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Activate Version Confirmation Modal (with BDA sync) */}
       <Modal
         visible={showActivateVersionConfirmModal}
-        onDismiss={() => setShowActivateVersionConfirmModal(false)}
+        onDismiss={() => {
+          setShowActivateVersionConfirmModal(false);
+          setActivateVersionTarget(null);
+        }}
         header="Confirm Activate Version"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowActivateVersionConfirmModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowActivateVersionConfirmModal(false);
+                  setActivateVersionTarget(null);
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={() => {
                   setShowActivateVersionConfirmModal(false);
-                  if (selectedVersionsForCompare[0]) {
-                    performSyncThenActivate(selectedVersionsForCompare[0]);
+                  if (activateVersionTarget) {
+                    performSyncThenActivate(activateVersionTarget);
                   }
+                  setActivateVersionTarget(null);
                 }}
                 loading={syncingDirection === 'idp_to_bda'}
-                disabled={!selectedVersionsForCompare[0]}
+                disabled={!activateVersionTarget}
               >
                 Confirm Activate
               </Button>
@@ -2545,10 +2737,10 @@ const ConfigurationLayout = (): React.JSX.Element => {
       >
         <SpaceBetween size="m">
           <Alert type="warning">
-            {selectedVersionsForCompare[0] ? (
+            {activateVersionTarget ? (
               <>
-                Activating version <strong>{selectedVersionsForCompare[0]}</strong> will first sync your IDP document classes to BDA
-                blueprints, then set it as the active configuration version.
+                Activating version <strong>{activateVersionTarget}</strong> will first sync your IDP document classes to BDA blueprints,
+                then set it as the active configuration version.
               </>
             ) : (
               <>No version selected. Please select a version to activate.</>

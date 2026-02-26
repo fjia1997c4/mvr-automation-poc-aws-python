@@ -124,7 +124,7 @@ idp-cli deploy [OPTIONS]
 
 **Required for New Stacks:**
 - `--stack-name`: CloudFormation stack name
-- `--pattern`: IDP pattern architecture to deploy (`pattern-1`, `pattern-2`, or `pattern-3`)
+- `--pattern`: IDP pattern architecture to deploy (`pattern-1` or `pattern-2`)
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**

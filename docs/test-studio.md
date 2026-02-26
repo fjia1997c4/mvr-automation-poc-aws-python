@@ -216,7 +216,7 @@ During stack deployment, the system automatically:
 
 #### Corresponding Config
 
-Use with: `config_library/pattern-2/rvl-cdip/config.yaml` or `config_library/pattern-3/rvl-cdip/config.yaml`
+Use with: `config_library/pattern-2/rvl-cdip/config.yaml`
 
 #### Evaluation Metrics
 

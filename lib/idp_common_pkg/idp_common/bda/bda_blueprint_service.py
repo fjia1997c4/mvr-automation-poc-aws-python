@@ -43,6 +43,158 @@ class BdaBlueprintService:
 
         return
 
+    def _sanitize_project_name(self, name: str) -> str:
+        """Sanitize a string for use in BDA project names.
+
+        BDA project names must be alphanumeric with hyphens only.
+        """
+        import re
+
+        # Replace non-alphanumeric chars (except hyphens) with hyphens
+        sanitized = re.sub(r"[^a-zA-Z0-9-]", "-", name)
+        # Collapse multiple hyphens
+        sanitized = re.sub(r"-+", "-", sanitized)
+        # Trim to reasonable length (BDA limit)
+        return sanitized[:128].strip("-")
+
+    def get_or_create_project_for_version(self, version_name: str) -> str:
+        """Get or create a BDA project for a specific config version.
+
+        Each config version gets its own BDA project to enable isolated
+        blueprint configurations. Project ARNs are stored in DynamoDB
+        (ConfigurationTable) with key 'BdaProject#{version_name}'.
+
+        Args:
+            version_name: Config version name (e.g., 'default', 'v1', 'production')
+
+        Returns:
+            BDA project ARN for this version
+        """
+        import boto3
+
+        table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
+        if not table_name:
+            logger.warning(
+                "CONFIGURATION_TABLE_NAME not set, falling back to constructor ARN"
+            )
+            return self.dataAutomationProjectArn
+
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(table_name)
+
+        # Look up stored project ARN for this version
+        db_key = f"BdaProject#{version_name}"
+        try:
+            response = table.get_item(Key={"Configuration": db_key})
+            item = response.get("Item")
+            if item and item.get("ProjectArn"):
+                project_arn = item["ProjectArn"]
+                logger.info(
+                    f"Found existing BDA project for version '{version_name}': {project_arn}"
+                )
+                # Verify the project still exists
+                try:
+                    self.blueprint_creator.bedrock_client.get_data_automation_project(
+                        projectArn=project_arn, projectStage="LIVE"
+                    )
+                    return project_arn
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                        logger.warning(
+                            f"Stored BDA project {project_arn} no longer exists, creating new one"
+                        )
+                    else:
+                        raise
+        except ClientError as e:
+            logger.warning(
+                f"Error looking up BDA project for version '{version_name}': {e}"
+            )
+
+        # Create a new project for this version
+        sanitized_version = self._sanitize_project_name(version_name)
+        project_name = f"{self.blueprint_name_prefix}-{sanitized_version}"
+        project_description = f"BDA project for config version '{version_name}' in stack {self.blueprint_name_prefix}"
+
+        logger.info(
+            f"Creating new BDA project for version '{version_name}': {project_name}"
+        )
+
+        # Create a minimal blueprint to bootstrap the project
+        # (BDA requires at least one blueprint for project creation)
+        bootstrap_schema = json.dumps(
+            {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "class": "Bootstrap",
+                "description": "Temporary bootstrap blueprint for project creation",
+                "type": "object",
+                "properties": {
+                    "placeholder": {
+                        "type": "string",
+                        "inferenceType": "explicit",
+                        "instruction": "Temporary placeholder field",
+                    }
+                },
+            }
+        )
+        bootstrap_blueprint = self.blueprint_creator.create_blueprint(
+            document_type="DOCUMENT",
+            blueprint_name=f"{project_name}-bootstrap-{uuid.uuid4().hex[:8]}",
+            schema=bootstrap_schema,
+        )
+
+        if not bootstrap_blueprint:
+            raise RuntimeError(
+                f"Failed to create bootstrap blueprint for project {project_name}"
+            )
+
+        bootstrap_arn = bootstrap_blueprint.get("blueprint", {}).get("blueprintArn")
+
+        result = self.blueprint_creator.create_data_automation_project(
+            project_name=project_name,
+            description=project_description,
+            blueprint_arn=bootstrap_arn,
+        )
+
+        if not result:
+            raise RuntimeError(
+                f"Failed to create BDA project for version '{version_name}'"
+            )
+
+        project_arn = result.get("projectArn")
+        if not project_arn:
+            raise RuntimeError(
+                f"No projectArn returned when creating BDA project for version '{version_name}'"
+            )
+
+        # Store the project ARN in DynamoDB
+        try:
+            table.put_item(
+                Item={
+                    "Configuration": db_key,
+                    "ProjectArn": project_arn,
+                    "ProjectName": project_name,
+                    "VersionName": version_name,
+                }
+            )
+            logger.info(
+                f"Stored BDA project ARN for version '{version_name}': {project_arn}"
+            )
+        except ClientError as e:
+            logger.error(f"Failed to store BDA project ARN: {e}")
+            # Don't fail - project was created successfully
+
+        # Clean up bootstrap blueprint (it will be replaced by real ones during sync)
+        if bootstrap_arn:
+            try:
+                self.blueprint_creator.bedrock_client.delete_blueprint(
+                    blueprintArn=bootstrap_arn
+                )
+                logger.info(f"Cleaned up bootstrap blueprint: {bootstrap_arn}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up bootstrap blueprint: {e}")
+
+        return project_arn
+
     def _normalize_aws_blueprint_schema(self, blueprint_schema: dict) -> dict:
         """
         Normalize AWS blueprint schema by fixing common issues.
@@ -476,6 +628,121 @@ class BdaBlueprintService:
 
         return schema, name_mapping
 
+    def _strip_idp_extension_fields(self, schema: dict) -> dict:
+        """
+        Recursively strip IDP-specific extension fields that BDA doesn't understand.
+
+        BDA's CreateBlueprint API rejects schemas containing unknown fields.
+        IDP schemas use custom extension fields (x-aws-idp-*) for evaluation,
+        classification, and other IDP-specific metadata. These must be removed
+        before sending to BDA.
+
+        Fields stripped:
+        - x-aws-idp-* (evaluation-method, list-item-description, document-type, etc.)
+        - format (JSON Schema format field not supported in BDA blueprint schemas)
+        - required (not used in BDA blueprint schemas at property level)
+
+        Args:
+            schema: JSON Schema dict to strip (modified in-place)
+
+        Returns:
+            The same schema dict with extension fields removed
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        # Collect keys to remove (can't modify dict during iteration)
+        keys_to_remove = []
+        for key in schema:
+            if key.startswith("x-aws-idp"):
+                keys_to_remove.append(key)
+
+        # Remove format field (BDA doesn't support JSON Schema format on properties)
+        if "format" in schema:
+            keys_to_remove.append("format")
+
+        # Remove required field (not used in BDA blueprint property definitions)
+        if "required" in schema:
+            keys_to_remove.append("required")
+
+        for key in keys_to_remove:
+            removed_val = schema.pop(key)
+            logger.debug(f"Stripped field '{key}' (value: {removed_val})")
+
+        # Recurse into nested structures
+        for key, value in schema.items():
+            if isinstance(value, dict):
+                self._strip_idp_extension_fields(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._strip_idp_extension_fields(item)
+
+        return schema
+
+    def _sanitize_def_names(self, schema: dict) -> dict:
+        """
+        Sanitize $defs / definitions key names that contain special characters.
+
+        BDA blueprint definition names must not contain spaces, commas, or other
+        special characters. This method sanitizes the keys and updates all $ref
+        paths that reference them.
+
+        Args:
+            schema: JSON Schema dict (modified in-place)
+
+        Returns:
+            The same schema dict with sanitized definition key names
+        """
+        import re
+
+        defs_field = (
+            "$defs"
+            if "$defs" in schema
+            else "definitions"
+            if "definitions" in schema
+            else None
+        )
+        if not defs_field:
+            return schema
+
+        defs = schema[defs_field]
+        ref_prefix = f"#/{defs_field}/"
+
+        # Build mapping of old name -> new name
+        name_mapping = {}
+        for def_name in list(defs.keys()):
+            sanitized = re.sub(r"[^a-zA-Z0-9_-]", "", def_name)
+            if sanitized != def_name:
+                name_mapping[def_name] = sanitized
+                logger.info(f"Sanitized definition name: '{def_name}' -> '{sanitized}'")
+
+        # Rename definition keys
+        for old_name, new_name in name_mapping.items():
+            defs[new_name] = defs.pop(old_name)
+
+        # Update all $ref paths in the schema
+        if name_mapping:
+            self._update_ref_paths(schema, ref_prefix, name_mapping)
+
+        return schema
+
+    def _update_ref_paths(self, obj: any, ref_prefix: str, name_mapping: dict) -> None:
+        """Recursively update $ref paths based on definition name mapping."""
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_val = obj["$ref"]
+                if ref_val.startswith(ref_prefix):
+                    old_def_name = ref_val[len(ref_prefix) :]
+                    if old_def_name in name_mapping:
+                        obj["$ref"] = f"{ref_prefix}{name_mapping[old_def_name]}"
+                        logger.debug(f"Updated $ref: '{ref_val}' -> '{obj['$ref']}'")
+            for value in obj.values():
+                self._update_ref_paths(value, ref_prefix, name_mapping)
+        elif isinstance(obj, list):
+            for item in obj:
+                self._update_ref_paths(item, ref_prefix, name_mapping)
+
     def _transform_json_schema_to_bedrock_blueprint(self, json_schema: dict) -> dict:
         """
         Transform JSON Schema (draft 2020-12) to BDA blueprint format (draft-07).
@@ -491,6 +758,8 @@ class BdaBlueprintService:
         - Object/array types do NOT get these fields
         - Array properties MUST have "instruction" field
         - Property names must not contain special characters like &, /
+        - No IDP extension fields (x-aws-idp-*) allowed
+        - No JSON Schema 'format' or 'required' fields allowed
 
         Args:
             json_schema: JSON Schema from configuration (should already be sanitized)
@@ -503,6 +772,24 @@ class BdaBlueprintService:
         """
         # Work on a deep copy to avoid mutating the input
         schema_copy = deepcopy(json_schema)
+
+        # Extract class name BEFORE stripping extension fields, since x-aws-idp-document-type
+        # is used as a fallback for the "class" field in the BDA blueprint
+        preserved_class = schema_copy.get(
+            ID_FIELD, schema_copy.get(X_AWS_IDP_DOCUMENT_TYPE, "Document")
+        )
+
+        # Strip IDP-specific extension fields that BDA doesn't understand
+        # This MUST happen before transformation to prevent x-aws-idp-*, format,
+        # and required fields from leaking into the BDA blueprint schema
+        self._strip_idp_extension_fields(schema_copy)
+
+        # Restore $id so _create_base_blueprint_structure can use it for the "class" field
+        if ID_FIELD not in schema_copy:
+            schema_copy[ID_FIELD] = preserved_class
+
+        # Sanitize $defs key names (remove spaces, commas, etc.)
+        self._sanitize_def_names(schema_copy)
 
         # Validate array properties have instruction field
         self._validate_array_instruction_requirements(schema_copy)
@@ -1663,6 +1950,10 @@ class BdaBlueprintService:
                     blueprints_updated=blueprints_updated,
                 )
 
+                # Remove any remaining AWS standard blueprints from the project
+                # so the project only contains custom blueprints matching the IDP config
+                self._remove_aws_standard_blueprints_from_project()
+
             # Save updated classes if any were added from BDA or if any were sanitized
             if len(classess_added) > 0 or classes_modified:
                 if len(classess_added) > 0:
@@ -1679,6 +1970,60 @@ class BdaBlueprintService:
         except Exception as e:
             logger.error(f"Error processing blueprint creation: {e}", exc_info=True)
             raise Exception(f"Failed to process blueprint creation: {str(e)}")
+
+    def delete_project(self, project_arn: str) -> bool:
+        """
+        Delete a BDA project and clean up its tracking entry in DynamoDB.
+
+        This is used when deleting a config version that has a linked BDA project.
+        It deletes the BDA project from AWS and removes the DynamoDB tracking entry.
+
+        Args:
+            project_arn: The ARN of the BDA project to delete
+
+        Returns:
+            True if deletion was successful, False otherwise
+        """
+        import boto3
+
+        try:
+            logger.info(f"Deleting BDA project: {project_arn}")
+
+            # Delete the BDA project from AWS
+            self.blueprint_creator.bedrock_client.delete_data_automation_project(
+                projectArn=project_arn
+            )
+            logger.info(f"Successfully deleted BDA project from AWS: {project_arn}")
+
+            # Clean up DynamoDB tracking entry
+            configuration_table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
+            if configuration_table_name:
+                try:
+                    dynamodb = boto3.resource("dynamodb")
+                    table = dynamodb.Table(configuration_table_name)
+                    # Find and delete BdaProject# entries that reference this ARN
+                    response = table.scan(
+                        FilterExpression="begins_with(Configuration, :prefix)",
+                        ExpressionAttributeValues={":prefix": "BdaProject#"},
+                    )
+                    for item in response.get("Items", []):
+                        if item.get("ProjectArn") == project_arn:
+                            table.delete_item(
+                                Key={"Configuration": item["Configuration"]}
+                            )
+                            logger.info(
+                                f"Deleted DynamoDB tracking entry: {item['Configuration']}"
+                            )
+                except Exception as db_e:
+                    logger.warning(
+                        f"Failed to clean up DynamoDB tracking for {project_arn}: {db_e}"
+                    )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete BDA project {project_arn}: {e}")
+            return False
 
     def cleanup_orphaned_blueprints(self, version: str) -> dict:
         """
@@ -1849,6 +2194,44 @@ class BdaBlueprintService:
                 "failed_count": 0,
                 "details": [],
             }
+
+    def _remove_aws_standard_blueprints_from_project(self):
+        """
+        Remove AWS standard blueprints from the BDA project's custom output configuration.
+
+        When syncing IDP → BDA, the project should only contain custom blueprints
+        that match the IDP config. AWS standard blueprints (with 'aws:blueprint' in ARN)
+        that were added during initial project creation should be disassociated.
+        """
+        try:
+            response = self.blueprint_creator.list_blueprints(
+                self.dataAutomationProjectArn, "LIVE"
+            )
+            all_project_blueprints = response.get("blueprints", [])
+
+            # Filter out AWS standard blueprints
+            custom_only = [
+                bp
+                for bp in all_project_blueprints
+                if "aws:blueprint" not in bp.get("blueprintArn", "")
+            ]
+
+            removed_count = len(all_project_blueprints) - len(custom_only)
+            if removed_count > 0:
+                logger.info(
+                    f"Removing {removed_count} AWS standard blueprints from project"
+                )
+                self.blueprint_creator.update_project_with_custom_configurations(
+                    self.dataAutomationProjectArn,
+                    customConfiguration={"blueprints": custom_only},
+                )
+            else:
+                logger.debug("No AWS standard blueprints to remove from project")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to remove AWS standard blueprints from project: {e}"
+            )
 
     def _synchronize_deletes(self, existing_blueprints, blueprints_updated):
         # remove all blueprints which are not in custom class

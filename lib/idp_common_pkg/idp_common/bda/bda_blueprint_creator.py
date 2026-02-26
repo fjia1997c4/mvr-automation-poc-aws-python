@@ -137,7 +137,8 @@ class BDABlueprintCreator:
                         "extraction": {
                             "granularity": {
                                 "types": [
-                                    "DOCUMENT",
+                                    "PAGE",
+                                    "ELEMENT",
                                 ]
                             },
                             "boundingBox": {"state": "ENABLED"},

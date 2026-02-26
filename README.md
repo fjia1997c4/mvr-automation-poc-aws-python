@@ -198,7 +198,6 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 
 - [Pattern 1: BDA](./docs/pattern-1.md) - Packet or Media processing with Bedrock Data Automation (BDA)
 - [Pattern 2: Textract + Bedrock](./docs/pattern-2.md) - OCR with Textract and generative AI with Bedrock
-- [Pattern 3: Textract + UDOP + Bedrock](./docs/pattern-3.md) - OCR with Textract, UDOP Classification, and Bedrock extraction
 - [Few-Shot Examples](./docs/few-shot-examples.md) - Implementing few-shot examples for improved accuracy
 
 ### Python Development

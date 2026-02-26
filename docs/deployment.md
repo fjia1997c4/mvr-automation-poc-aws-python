@@ -240,7 +240,6 @@ aws cloudformation update-stack \
 - `Pattern2 - Packet processing with Textract and Bedrock`
   - Supports both page-level and holistic classification
   - Recommended for first-time users
-- `Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock`
   - Requires a UDOP model in S3 that will be deployed on SageMaker
 
 After deployment, check the Outputs tab in the CloudFormation console to find links to dashboards, buckets, workflows, and other solution resources.
