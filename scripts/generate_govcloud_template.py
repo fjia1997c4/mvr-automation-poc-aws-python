@@ -51,8 +51,13 @@ class GovCloudTemplateGenerator:
             'GraphQLApi',  # Core API resource
             'GraphQLApiLogGroup',  # API logging
             'AppSyncCwlRole',  # CloudWatch logging role
-            # Note: All resolvers, datasources, and resolver Lambda functions are now in nested/appsync/
-            # and will be removed by deleting APPSYNCSTACK. No need to list them individually.
+            # Note: Most resolvers, datasources, and resolver Lambda functions are in nested/appsync/
+            # and will be removed by deleting APPSYNCSTACK. However, some AppSync resources remain in
+            # the main template and must be explicitly listed here:
+            'CalculateCapacityDataSource',  # AppSync data source - references GraphQLApi
+            'CalculateCapacityResolver',  # AppSync resolver - references GraphQLApi
+            'CalculateCapacityResolverFunction',  # Lambda bridge for AppSync resolver
+            'CalculateCapacityResolverFunctionLogGroup',  # Log group for resolver function
         }
         
         self.auth_resources = {
