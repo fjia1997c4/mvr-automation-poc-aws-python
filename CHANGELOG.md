@@ -40,6 +40,8 @@ SPDX-License-Identifier: MIT-0
 
 - **Fixed insufficient Lambda memory for Extraction, Assessment, and Evaluation functions in unified pattern template** — Increased MemorySize from 512 MB (Extraction, Assessment) and 1024 MB (Evaluation) to 4096 MB to match all other document processing Lambda functions, preventing potential out-of-memory errors during document processing. ([#205](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/205))
 
+- **Fixed DOCX processing to extract text from embedded images and correct page splitting** — DOCX files with embedded images (e.g., `<w:drawing>` elements) now have image content OCR'd and included in the extracted text instead of being silently skipped. Page splitting now uses DOCX metadata (explicit page breaks, image display dimensions from `wp:extent`, section properties) instead of inaccurate height estimates, producing correct page boundaries.
+
 ## [0.4.16]
 
 ### Added
