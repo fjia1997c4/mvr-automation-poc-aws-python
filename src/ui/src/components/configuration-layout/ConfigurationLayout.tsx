@@ -2145,31 +2145,33 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 </Button>
                 {(isPattern1 || mergedConfig?.use_bda || formValues?.use_bda) && (
                   <>
-                    <Button
-                      variant="normal"
-                      onClick={() => {
-                        setSyncFromBdaArnInput('');
-                        setSyncFromBdaMode('replace');
-                        setShowSyncFromBdaModal(true);
-                      }}
-                      loading={syncingDirection === 'bda_to_idp'}
-                      disabled={hasUnsavedChanges}
-                      title={hasUnsavedChanges ? 'Save your changes first' : undefined}
-                    >
-                      Sync from BDA
-                    </Button>
-                    <Button
-                      variant="normal"
-                      onClick={() => {
-                        setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
-                        setShowSyncToBdaConfirmModal(true);
-                      }}
-                      loading={syncingDirection === 'idp_to_bda'}
-                      disabled={hasUnsavedChanges}
-                      title={hasUnsavedChanges ? 'Save your changes first' : undefined}
-                    >
-                      Sync to BDA
-                    </Button>
+                    <span title={hasUnsavedChanges ? 'Save your changes first' : undefined}>
+                      <Button
+                        variant="normal"
+                        onClick={() => {
+                          setSyncFromBdaArnInput('');
+                          setSyncFromBdaMode('replace');
+                          setShowSyncFromBdaModal(true);
+                        }}
+                        loading={syncingDirection === 'bda_to_idp'}
+                        disabled={hasUnsavedChanges}
+                      >
+                        Sync from BDA
+                      </Button>
+                    </span>
+                    <span title={hasUnsavedChanges ? 'Save your changes first' : undefined}>
+                      <Button
+                        variant="normal"
+                        onClick={() => {
+                          setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                          setShowSyncToBdaConfirmModal(true);
+                        }}
+                        loading={syncingDirection === 'idp_to_bda'}
+                        disabled={hasUnsavedChanges}
+                      >
+                        Sync to BDA
+                      </Button>
+                    </span>
                   </>
                 )}
                 <Button variant="normal" onClick={() => setShowResetModal(true)} disabled={currentVersionName === 'default'}>

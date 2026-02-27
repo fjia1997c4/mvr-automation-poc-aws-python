@@ -183,9 +183,9 @@ ui-lint:
 	STORED_HASH=$$(test -f src/ui/.checksum && cat src/ui/.checksum || echo ""); \
 	if [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		echo "UI code checksum changed - running lint..."; \
-		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && \
+		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && npm run typecheck && \
 		echo "$$CURRENT_HASH" > .checksum; \
-		echo -e "$(GREEN)✅ UI lint completed and checksum updated$(NC)"; \
+		echo -e "$(GREEN)✅ UI lint and typecheck completed and checksum updated$(NC)"; \
 	else \
 		echo -e "$(GREEN)✅ UI code checksum unchanged - skipping lint$(NC)"; \
 	fi

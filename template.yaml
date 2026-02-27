@@ -1111,28 +1111,7 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 10
-      InlineCode: |
-        import boto3, json, cfnresponse
-        def handler(event, context):
-            print(json.dumps(event))
-            response_data = {'IDPPattern': ''}
-            try:
-                if event['RequestType'] in ('Create', 'Update'):
-                    ssm_name = event['ResourceProperties'].get('SettingsParameterName', '')
-                    if ssm_name:
-                        ssm = boto3.client('ssm')
-                        try:
-                            param = ssm.get_parameter(Name=ssm_name)
-                            settings = json.loads(param['Parameter']['Value'])
-                            response_data['IDPPattern'] = settings.get('IDPPattern', '')
-                            print(f"Previous IDPPattern: {response_data['IDPPattern']}")
-                        except ssm.exceptions.ParameterNotFound:
-                            print("Settings parameter not found (new stack)")
-                        except Exception as e:
-                            print(f"Error reading settings: {e}")
-            except Exception as e:
-                print(f"Error: {e}")
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+      CodeUri: src/lambda/read_previous_idp_pattern
       Environment:
         Variables:
           LOG_LEVEL: INFO
