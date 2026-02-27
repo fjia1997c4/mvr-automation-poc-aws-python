@@ -82,6 +82,31 @@ pip install -e ".[test]"
 
 ## Quick Start
 
+### Global Options
+
+The CLI supports an optional `--profile` parameter to specify which AWS credentials profile to use:
+
+```bash
+idp-cli --profile my-profile <command> [options]
+```
+
+- Can be placed anywhere in the command
+- Only affects that specific command execution
+- Automatically applies to all AWS SDK calls
+- If not specified, uses default AWS credentials
+
+**Examples:**
+```bash
+# Profile before command
+idp-cli --profile production deploy --stack-name my-stack ...
+
+# Profile after command
+idp-cli deploy --profile production --stack-name my-stack ...
+
+# Profile at the end
+idp-cli deploy --stack-name my-stack --profile production ...
+```
+
 ### Deploy a stack and process documents in 3 commands:
 
 ```bash

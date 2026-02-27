@@ -152,6 +152,12 @@ def cli():
     - Batch document upload and processing
     - Progress monitoring with live updates
     - Status checking and reporting
+
+    Global Options:
+      --profile PROFILE    AWS profile name to use for credentials.
+                          Can be placed anywhere in the command.
+                          Example: idp-cli --profile my-profile run-inference ...
+                          Example: idp-cli run-inference --profile my-profile ...
     """
     pass
 
@@ -4195,6 +4201,25 @@ def config_delete(
 
 def main():
     """Main entry point for the CLI"""
+    # Parse --profile from anywhere in sys.argv before Click processes arguments
+    args = sys.argv[1:]  # Skip script name
+    profile = None
+
+    # Look for --profile in arguments
+    i = 0
+    while i < len(args):
+        if args[i] == "--profile" and i + 1 < len(args):
+            profile = args[i + 1]
+            # Remove --profile and its value from sys.argv
+            sys.argv.pop(i + 1)  # Remove profile value
+            sys.argv.pop(i + 1)  # Remove --profile (index shifts after first pop)
+            break
+        i += 1
+
+    if profile:
+        os.environ["AWS_DEFAULT_PROFILE"] = profile
+        console.print(f"[green]Using AWS profile: {profile}[/green]")
+
     cli()
 
 
