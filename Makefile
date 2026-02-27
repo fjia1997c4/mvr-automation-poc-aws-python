@@ -64,6 +64,12 @@ test-config-library:
 	@echo "Validating config library YAML/JSON files..."
 	python -m pytest config_library/test_config_library.py -v
 
+# Run only IDP CLI tests
+test-cli:
+	@echo "Running IDP CLI tests..."
+	cd lib/idp_cli_pkg && python -m pytest -v
+	@echo -e "$(GREEN)✅ All CLI tests passed!$(NC)"
+
 # Run only capacity planning tests
 test-capacity:
 	@echo "Running capacity planning Lambda tests..."

@@ -1460,6 +1460,12 @@ STDERR:
                     "<OCR_BENCHMARK_DEPLOYER_HASH_TOKEN>": self.get_directory_checksum(
                         "src/lambda/ocr_benchmark_deployer"
                     )[:16],
+                    "<docsplit_testset_deployer_HASH_TOKEN>": self.get_directory_checksum(
+                        "src/lambda/docsplit_testset_deployer"
+                    )[:16],
+                    "<w2_dataset_deployer_HASH_TOKEN>": self.get_directory_checksum(
+                        "src/lambda/w2_dataset_deployer"
+                    )[:16],
                 }
 
                 # Debug: show layer ARNs being used

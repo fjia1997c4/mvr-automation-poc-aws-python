@@ -7,7 +7,6 @@ import logging
 import base64
 import boto3
 import os
-import uuid
 from typing import Any, Dict, Optional
 from datetime import datetime
 from .base import IDPTool
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Version marker
 TOOL_VERSION = "SDK-v2-enhanced"
-TOOL_UPDATED = "2025-01-24T00:00:00Z"
+TOOL_UPDATED = "2025-01-24T16:30:00Z"
 
 
 class BatchRunTool(IDPTool):
@@ -91,11 +90,12 @@ class BatchRunTool(IDPTool):
             from idp_sdk.core.batch_processor import BatchProcessor
             
             processor = BatchProcessor(stack_name=self.stack_name)
+            batch_prefix = prefix or 'mcp-batch'
             result = processor.process_batch_from_s3_uri(
                 s3_uri=location,
                 file_pattern="*.pdf",
                 recursive=True,
-                output_prefix=prefix or 'mcp-batch'
+                output_prefix=batch_prefix
             )
             
             return {
@@ -137,8 +137,8 @@ class BatchRunTool(IDPTool):
                 }
             
             # Step 2: Generate batch ID and temp S3 key
-            batch_id = self._generate_batch_id(prefix)
-            temp_s3_key = f"mcp-temp/{batch_id}/{name}"
+            batch_id = self._generate_batch_id('mcp-content')
+            temp_s3_key = f"temp/{batch_id}/{name}"
             logger.info(f"Generated batch_id: {batch_id}, temp_key: {temp_s3_key}")
             
             # Step 3: Get MCP content bucket
@@ -164,10 +164,12 @@ class BatchRunTool(IDPTool):
             
             # Step 5: Use existing S3 processing logic with MCP bucket URI
             processor = BatchProcessor(stack_name=self.stack_name)
-            temp_s3_uri = f"s3://{mcp_bucket}/{temp_s3_key}"
+            temp_s3_uri = f"s3://{mcp_bucket}/temp/{batch_id}/"
             result = processor.process_batch_from_s3_uri(
                 s3_uri=temp_s3_uri,
-                output_prefix=batch_id
+                file_pattern="*.pdf",
+                output_prefix=batch_id,
+                batch_id=batch_id
             )
             logger.info(f"Batch processing completed: {result}")
             
@@ -189,7 +191,7 @@ class BatchRunTool(IDPTool):
             }
     
     def _generate_batch_id(self, prefix: Optional[str]) -> str:
-        """Generate batch ID with optional prefix"""
+        """Generate batch ID with timestamp only"""
         prefix = prefix or 'mcp-batch'
         timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
         return f"{prefix}-{timestamp}"

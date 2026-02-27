@@ -1114,23 +1114,41 @@ def _process_impl(
             )
         else:
             # Handle manifest/directory/S3 processing
-            batch_result = processor.process_batch(
-                manifest_path=manifest,
-                directory=directory,
-                s3_uri=s3_uri,
-                batch_id=batch_id,
-                file_pattern=file_pattern,
-                recursive=recursive,
-                config_path=config,
-                batch_prefix=batch_prefix,
-                number_of_files=number_of_files,
-                config_version=config_version,
-            )
+            if manifest:
+                batch_result = processor.process_batch(
+                    manifest_path=manifest,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif directory:
+                batch_result = processor.process_batch_from_directory(
+                    dir_path=directory,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif s3_uri:
+                batch_result = processor.process_batch_from_s3_uri(
+                    s3_uri=s3_uri,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                )
+            else:
+                raise ValueError("No input source specified")
 
         # Show results
         console.print()
         console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(f"Documents queued: {batch_result['documents_queued']}")
+        console.print(
+            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
+        )
 
         if batch_result.get("uploaded", 0) > 0:
             console.print(f"Files uploaded: {batch_result['uploaded']}")
@@ -1142,7 +1160,10 @@ def _process_impl(
         console.print()
 
         # Monitor if requested
-        if monitor and batch_result["documents_queued"] > 0:
+        if (
+            monitor
+            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
+        ):
             _monitor_progress(
                 stack_name=stack_name,
                 batch_id=batch_result["batch_id"],
@@ -1658,8 +1679,12 @@ def _rerun_inference_impl(
 
 @cli.command()
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
-@click.option("--batch-id", help="Batch identifier")
+@click.option("--batch-id", help="Batch identifier or PK substring to search for")
 @click.option("--document-id", help="Single document ID (alternative to --batch-id)")
+@click.option(
+    "--object-status",
+    help="Filter by object status (e.g., COMPLETED, FAILED, QUEUED, RUNNING)",
+)
 @click.option("--wait", is_flag=True, help="Wait for all documents to complete")
 @click.option(
     "--refresh-interval",
@@ -1674,38 +1699,74 @@ def _rerun_inference_impl(
     default="table",
     help="Output format: table (default) or json",
 )
+@click.option(
+    "--show-details",
+    is_flag=True,
+    help="Show detailed information about matching documents",
+)
+@click.option(
+    "--get-time",
+    is_flag=True,
+    help="Calculate and display timing statistics (processing time, queue time, etc.)",
+)
+@click.option(
+    "--include-metering",
+    is_flag=True,
+    help="Include Lambda metering statistics (GB-seconds by stage) when using --get-time",
+)
 @click.option("--region", help="AWS region (optional)")
 def status(
     stack_name: str,
     batch_id: Optional[str],
     document_id: Optional[str],
+    object_status: Optional[str],
     wait: bool,
     refresh_interval: int,
     output_format: str,
+    show_details: bool,
+    get_time: bool,
+    include_metering: bool,
     region: Optional[str],
 ):
     """
-    Check status of a batch or single document
+    Check status of documents by batch ID, document ID, or search criteria
 
     Specify ONE of:
-      --batch-id: Check status of all documents in a batch
+      --batch-id: Search for documents with PK containing this substring
       --document-id: Check status of a single document
+
+    Optional filters and display options:
+      --object-status: Filter by status (COMPLETED, FAILED, QUEUED, RUNNING)
+      --show-details: Show detailed document information
+      --get-time: Calculate timing statistics
+      --include-metering: Include Lambda metering data (requires --get-time)
 
     Examples:
 
-      # Check batch status
+      # Search for all documents in a batch (PK substring search)
       idp-cli status --stack-name my-stack --batch-id cli-batch-20250110-153045-abc12345
+
+      # Search for completed documents in a batch
+      idp-cli status --stack-name my-stack --batch-id batch-123 --object-status COMPLETED
+
+      # Search with timing statistics
+      idp-cli status --stack-name my-stack --batch-id batch-123 --object-status COMPLETED --get-time
+
+      # Search with timing and Lambda metering
+      idp-cli status --stack-name my-stack --batch-id test --object-status COMPLETED --get-time --include-metering
 
       # Check single document status
       idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf
 
-      # Monitor single document until completion
-      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --wait
+      # Monitor documents until completion
+      idp-cli status --stack-name my-stack --batch-id batch-123 --wait
 
       # Get JSON output for scripting
-      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --format json
+      idp-cli status --stack-name my-stack --batch-id batch-123 --format json
     """
     try:
+        from .search_tracking_table import TrackingTableSearcher
+
         # Validate mutually exclusive options
         if not batch_id and not document_id:
             console.print(
@@ -1724,17 +1785,105 @@ def status(
 
         # Get document IDs to monitor
         if batch_id:
-            # Get batch info
-            batch_info = processor.get_batch_info(batch_id)
-            if not batch_info:
-                console.print(f"[red]✗ Batch not found: {batch_id}[/red]")
+            # Use TrackingTableSearcher for PK substring search
+            searcher = TrackingTableSearcher(stack_name=stack_name, region=region)
+
+            # Default to searching all statuses if not specified
+            if object_status:
+                # Search with specific status filter
+                search_results = searcher.search_by_pk_and_status(
+                    pk=batch_id, object_status=object_status
+                )
+            else:
+                # Search across all statuses by doing multiple searches
+                # This ensures we get all documents matching the PK substring
+                all_statuses = [
+                    "COMPLETED",
+                    "FAILED",
+                    "QUEUED",
+                    "RUNNING",
+                    "PROCESSING",
+                ]
+                all_items = []
+
+                console.print(
+                    f"[yellow]Searching for documents with PK containing '{batch_id}'...[/yellow]"
+                )
+
+                for status in all_statuses:
+                    results = searcher.search_by_pk_and_status(
+                        pk=batch_id, object_status=status
+                    )
+                    if results.get("success") and results.get("items"):
+                        all_items.extend(results["items"])
+
+                search_results = {
+                    "success": True,
+                    "count": len(all_items),
+                    "items": all_items,
+                    "pk": batch_id,
+                    "object_status": "ALL",
+                }
+
+                console.print(
+                    f"[green]✓ Found {len(all_items)} matching documents[/green]"
+                )
+
+            if not search_results.get("success"):
+                console.print(
+                    f"[red]✗ Search failed: {search_results.get('error')}[/red]"
+                )
                 sys.exit(1)
-            document_ids = batch_info["document_ids"]
+
+            if search_results.get("count", 0) == 0:
+                msg = f"No documents found matching batch-id '{batch_id}'"
+                if object_status:
+                    msg += f" with status '{object_status}'"
+                console.print(f"[yellow]{msg}[/yellow]")
+                sys.exit(1)
+
+            # Extract document IDs from search results
+            document_ids = []
+            for item in search_results.get("items", []):
+                # Extract ObjectKey from DynamoDB format
+                object_key = item.get("ObjectKey", {}).get("S")
+                if object_key:
+                    document_ids.append(object_key)
+
             identifier = batch_id
+
+            # Display search results summary if not waiting
+            if not wait and not get_time:
+                console.print()
+                console.print(f"[bold blue]Search Results for: {batch_id}[/bold blue]")
+                if object_status:
+                    console.print(f"[dim]Status filter: {object_status}[/dim]")
+                console.print(f"[dim]Documents found: {len(document_ids)}[/dim]")
+                console.print()
+
+                # Show details if requested
+                if show_details:
+                    searcher.display_results(search_results, show_details=True)
+                    console.print()
+
         else:
             # Single document
             document_ids = [document_id]
             identifier = document_id
+
+        # Handle timing statistics display (only for batch-id searches)
+        if get_time and batch_id:
+            console.print()
+            timing_stats = searcher.calculate_timing_statistics(
+                search_results, include_metering=include_metering
+            )
+            searcher.display_timing_statistics(timing_stats)
+
+            # If not waiting, we're done
+            if not wait:
+                sys.exit(0)
+
+            console.print()
 
         if wait:
             # JSON format not compatible with live monitoring

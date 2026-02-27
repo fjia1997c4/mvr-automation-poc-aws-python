@@ -2013,6 +2013,78 @@ Resources:
       DatasetDescription: "Test set with 500 multi-page document packets combining 13 document types (budget, email, form, handwritten, invoice, language, letter, memo, news article, questionnaire, resume, scientific publication, specification) for classification and document splitting evaluation."
       SourceCodeHash: <docsplit_testset_deployer_HASH_TOKEN>
 
+  ##########################################################################
+  # W2 Dataset Deployer - Automatically deploys Fake W-2 Tax Form dataset
+  ##########################################################################
+
+  W2DatasetDeployerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  W2DatasetDeployerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-W2DatasetDeployer"
+      CodeUri: src/lambda/w2_dataset_deployer/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      LoggingConfig:
+        LogGroup: !Ref W2DatasetDeployerLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TESTSET_BUCKET: !Ref TestSetBucket
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  W2DatasetDeployment:
+    Type: Custom::W2DatasetDeployer
+    DependsOn:
+      - TestSetBucket
+      - TrackingTable
+    Properties:
+      ServiceToken: !GetAtt W2DatasetDeployerFunction.Arn
+      DatasetVersion: "1.0"
+      DatasetName: "Fake-W2-Tax-Forms"
+      DatasetDescription: "Test set with 2,000 synthetic US W-2 tax form images and 45-field structured ground truth for extraction evaluation. Source: HuggingFace singhsays/fake-w2-us-tax-form-dataset (CC0: Public Domain)."
+      SourceCodeHash: <w2_dataset_deployer_HASH_TOKEN>
+
   ConfigurationBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Retain
@@ -5727,6 +5799,10 @@ Resources:
             reason: "Lambda function does not need to be in VPC"
           - id: W92
             reason: "Lambda function does not need reserved concurrency"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for synchronous AppSync resolver"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values"
     Properties:
       PermissionsBoundary:
         !If [
