@@ -279,8 +279,13 @@ def delete_gateway(props, gateway_name):
     region = props['Region']
     client = boto3.client("bedrock-agentcore-control", region_name=region)
     
-    resp = client.list_gateways(maxResults=10)
-    items = [g for g in resp.get("items", []) if g.get("name") == gateway_name]
+    # Paginate through all gateways
+    all_gateways = []
+    paginator = client.get_paginator("list_gateways")
+    for page in paginator.paginate():
+        all_gateways.extend(page.get("items", []))
+    
+    items = [g for g in all_gateways if g.get("name") == gateway_name]
     
     if not items:
         logger.info(f"Gateway {gateway_name} not found")
