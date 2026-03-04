@@ -82,6 +82,17 @@ class BatchRunTool(IDPTool):
                 }
             }
         
+        # Validate filename to prevent path traversal
+        if name and ('..' in name or name.startswith('/')):
+            return {
+                'valid': False,
+                'error_response': {
+                    'success': False,
+                    'error': 'invalid_filename',
+                    'message': "Filename cannot contain '..' or start with '/'"
+                }
+            }
+        
         return {'valid': True}
     
     def _process_s3_location(self, location: str, prefix: Optional[str]) -> Dict[str, Any]:
@@ -178,7 +189,7 @@ class BatchRunTool(IDPTool):
                 'success': True,
                 'batch_id': result['batch_id'],
                 'documents_queued': 1,
-                'document_name': name,
+                'document_name': os.path.basename(name),
                 'message': 'Document queued for processing'
             }
         
