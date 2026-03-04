@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **MCP Server** — Added additional tool to MCP Server for retrieving results of the processed document from the IDP system.
+
+### Fixed
+
+- **AgentCore Gateway Manager** — Fixed the issue where gateway was not getting deleted once stack is deleted.
+
+
 ## [0.5.0]
 
 ### Added
