@@ -1925,6 +1925,8 @@ Shows a table with version names, active status, creation/update timestamps, and
 
 Activate a configuration version in a deployed IDP stack.
 
+**Automatic BDA Sync:** If the configuration version has `use_bda` enabled, this command will automatically sync the configuration to BDA (Bedrock Data Automation) before activation. This ensures BDA blueprints are up-to-date and matches the UI behavior.
+
 **Usage:**
 ```bash
 idp-cli config-activate [OPTIONS]
@@ -1942,6 +1944,18 @@ idp-cli config-activate --stack-name my-stack --config-version v2
 
 # Activate default version
 idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Behavior:**
+1. Validates the configuration version exists
+2. If `use_bda` is enabled in the configuration:
+   - Syncs IDP document classes to BDA blueprints
+   - Creates a new BDA project if none exists
+   - Updates BDA sync status
+3. Activates the configuration version
+4. All new document processing will use this configuration
+
+**Note:** If BDA sync fails (when `use_bda` is enabled), the activation will be aborted to prevent processing errors.
 ```
 
 **Notes:**

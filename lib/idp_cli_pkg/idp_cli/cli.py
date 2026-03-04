@@ -3932,6 +3932,9 @@ def config_activate(
     Sets the specified configuration version as the active version.
     All new document processing will use this configuration.
 
+    If the configuration has use_bda enabled, it will automatically sync
+    to BDA before activation (matching UI behavior).
+
     Examples:
       # Activate a specific version
       idp-cli config-activate --stack-name my-stack --config-version v2
@@ -3968,11 +3971,13 @@ def config_activate(
 
         console.print(f"[dim]Using table: {config_table}[/dim]")
 
-        # Activate the version
+        # Check version and sync to BDA if needed
         try:
+            from idp_common.bda.bda_blueprint_service import BdaBlueprintService
             from idp_common.config.configuration_manager import ConfigurationManager
 
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            os.environ["STACK_NAME"] = stack_name
             manager = ConfigurationManager()
 
             # Check if version exists
@@ -3987,6 +3992,79 @@ def config_activate(
                     f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
                 )
                 return
+
+            # Check if BDA sync is needed (matching UI behavior)
+            use_bda = (
+                existing_config.use_bda
+                if hasattr(existing_config, "use_bda")
+                else False
+            )
+            if use_bda:
+                console.print(
+                    "[yellow]Configuration has use_bda enabled, syncing to BDA...[/yellow]"
+                )
+
+                try:
+                    # Get or create BDA project
+                    bda_project_arn = manager.get_bda_project_arn(config_version)
+                    bda_service = BdaBlueprintService(
+                        dataAutomationProjectArn=bda_project_arn
+                    )
+
+                    if not bda_project_arn:
+                        console.print(
+                            "[dim]No BDA project linked, creating new project...[/dim]"
+                        )
+                        bda_project_arn = bda_service.get_or_create_project_for_version(
+                            config_version
+                        )
+                        console.print(
+                            f"[dim]Created BDA project: {bda_project_arn}[/dim]"
+                        )
+
+                    # Sync IDP to BDA (matching UI resolver logic)
+                    bda_service.dataAutomationProjectArn = bda_project_arn
+                    result = bda_service.create_blueprints_from_custom_configuration(
+                        sync_direction="idp_to_bda",
+                        version=config_version,
+                        sync_mode="replace",
+                    )
+
+                    # Process results
+                    sync_failed = []
+                    sync_succeeded = []
+                    if isinstance(result, list):
+                        for item in result:
+                            if item.get("status") == "success":
+                                sync_succeeded.append(item.get("class"))
+                            else:
+                                sync_failed.append(item.get("class", "Unknown"))
+
+                    if len(sync_succeeded) == 0 and len(sync_failed) > 0:
+                        console.print(
+                            f"[red]✗ BDA sync failed for all {len(sync_failed)} classes[/red]"
+                        )
+                        console.print("[red]Activation aborted[/red]")
+                        return
+                    elif len(sync_failed) > 0:
+                        console.print(
+                            f"[yellow]⚠ Partial sync: {len(sync_succeeded)} succeeded, {len(sync_failed)} failed[/yellow]"
+                        )
+                        manager.set_bda_project_arn(
+                            config_version, bda_project_arn, "partial"
+                        )
+                    else:
+                        console.print(
+                            f"[green]✓ Successfully synced {len(sync_succeeded)} classes to BDA[/green]"
+                        )
+                        manager.set_bda_project_arn(
+                            config_version, bda_project_arn, "synced"
+                        )
+
+                except Exception as e:
+                    console.print(f"[red]✗ Failed to sync to BDA: {e}[/red]")
+                    console.print("[red]Activation aborted[/red]")
+                    return
 
             # Activate the version
             manager.activate_version(config_version)
