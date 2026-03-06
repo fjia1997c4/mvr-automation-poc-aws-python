@@ -3521,14 +3521,19 @@ Resources:
               "width": 8,
               "height": 6,
               "properties": {
-                "metrics": [],
+                "metrics": [
+                  [{"expression": "m1/PERIOD(m1)*60", "label": "OCR Throttles per Minute"}],
+                  [{"expression": "m2/PERIOD(m2)*60", "label": "OCR Non-Retryable Errors per Minute"}],
+                  ["${StackName}", "OCRThrottles", {"id": "m1", "stat": "Sum", "visible": false}],
+                  [".", "OCRNonRetryableErrors", {"id": "m2", "stat": "Sum", "visible": false}]
+                ],
                 "region": "${AWS::Region}",
-                "title": "Blank",
+                "title": "OCR Throttling & Errors (per Minute)",
                 "view": "timeSeries",
                 "period": 60,
                 "yAxis": {
                   "left": {
-                    "label": "N/A"
+                    "label": "Count per Minute"
                   }
                 }
               }
@@ -4160,6 +4165,38 @@ Resources:
                 "region": "${AWS::Region}",
                 "title": "ProcessResults Lambda Errors",
                 "view": "table"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 84,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${OCRFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ClassificationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ExtractionFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${AssessmentFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${SummarizationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${EvaluationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${RuleValidationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${InvokeBDAFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${BDAProcessResultsFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${BDACompletionFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ProcessResultsFunction}", {"stat": "Sum"}]
+                ],
+                "region": "${AWS::Region}",
+                "title": "Lambda Concurrency Throttles (429) - All Functions",
+                "view": "timeSeries",
+                "period": 60,
+                "stacked": true,
+                "yAxis": {
+                  "left": {
+                    "label": "Throttle Count"
+                  }
+                }
               }
             }
           ]
