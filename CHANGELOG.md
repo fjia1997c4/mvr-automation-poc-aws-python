@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation & CLI: Remove deprecated `--pattern` references** — Updated `deployment.md`, `idp-cli.md`, and CLI code to reflect the unified pattern architecture. Removed `--pattern` from all deploy and config command examples/options. Restructured deployment.md "Build from Source" section to showcase `idp-cli deploy --from-code` first, then `publish.py` + `aws cloudformation` as a separate workflow. Simplified Container-Based Lambda Deployment section to clarify containers are deployed automatically. Fixed stale `config_library/pattern-2/` path references to `config_library/unified/`.
+
 ## [0.5.1]
 
 ### Added
