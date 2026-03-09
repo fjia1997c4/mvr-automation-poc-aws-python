@@ -2,6 +2,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
 export default defineConfig({
+  site: "https://aws-solutions-library-samples.github.io",
+  base: "/accelerated-intelligent-document-processing-on-aws",
   integrations: [
     starlight({
       title: "GenAI IDP",
