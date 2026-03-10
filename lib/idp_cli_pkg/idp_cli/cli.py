@@ -3727,6 +3727,8 @@ def config_upload(
 
             # Set env var for ConfigurationManager to find the table
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            if region:
+                os.environ["AWS_DEFAULT_REGION"] = region
 
             manager = ConfigurationManager()
 
