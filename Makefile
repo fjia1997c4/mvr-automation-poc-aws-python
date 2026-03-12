@@ -274,17 +274,19 @@ codegen-check:
 	fi
 
 commit: lint test
-	$(info Generating commit message...)
-	export COMMIT_MESSAGE="$(shell kiro-cli chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only on a single line." | grep ">" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
-	git add . && \
-	git commit -am "$${COMMIT_MESSAGE}" && \
+	@echo "Generating commit message via Bedrock..."
+	@git add . && \
+	COMMIT_MESSAGE=$$(bash scripts/generate_commit_message.sh) && \
+	echo "Commit message: $$COMMIT_MESSAGE" && \
+	git commit -m "$$COMMIT_MESSAGE" && \
 	git push
 
 fastcommit: fastlint
-	$(info Generating commit message...)
-	export COMMIT_MESSAGE="$(shell kiro-cli chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only on a single line." | grep ">" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
-	git add . && \
-	git commit -am "$${COMMIT_MESSAGE}" && \
+	@echo "Generating commit message via Bedrock..."
+	@git add . && \
+	COMMIT_MESSAGE=$$(bash scripts/generate_commit_message.sh) && \
+	echo "Commit message: $$COMMIT_MESSAGE" && \
+	git commit -m "$$COMMIT_MESSAGE" && \
 	git push
 
 # Build and serve the documentation site locally
