@@ -433,7 +433,7 @@ const PricingLayout = (): React.JSX.Element => {
         entry.units.forEach((unit) => {
           items.push({
             apiName: entry.name,
-            displayName: entry.name.split('/')[1] || entry.name,
+            displayName: entry.name.includes('/') ? entry.name.split('/').slice(1).join('/') : entry.name,
             unitName: unit.name,
             price: unit.price,
           });

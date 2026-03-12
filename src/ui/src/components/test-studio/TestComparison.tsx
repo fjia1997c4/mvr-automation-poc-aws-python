@@ -356,7 +356,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
             const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
             const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
             const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
-            const [service, api] = serviceApi.split('/');
+            const [service, ...apiParts] = serviceApi.split('/');
+            const api = apiParts.join('/');
             allCostItems.add(`${context}|${service}/${api}|${unit}`);
           });
         });
@@ -1257,7 +1258,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                       const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
                       const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
                       const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
-                      const [service, api] = serviceApi.split('/');
+                      const [service, ...apiParts] = serviceApi.split('/');
+                      const api = apiParts.join('/');
                       allCostItems.add(`${context}|${service}/${api}|${unit}`);
                     });
                   });
@@ -1421,7 +1423,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                       const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
                       const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
                       const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
-                      const [service, api] = serviceApi.split('/');
+                      const [service, ...apiParts] = serviceApi.split('/');
+                      const api = apiParts.join('/');
                       allUsageItems.add(`${context}|${service}/${api}|${unit}`);
                     });
                   });

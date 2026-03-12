@@ -217,7 +217,8 @@ const ComprehensiveBreakdown = ({
                   const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
                   const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
                   const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
-                  const [service, api] = serviceApi.split('/');
+                  const [service, ...apiParts] = serviceApi.split('/');
+                  const api = apiParts.join('/');
 
                   const cost = (details.estimated_cost as number) || 0;
                   contextSubtotal += cost;
