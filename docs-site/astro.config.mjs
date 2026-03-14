@@ -143,6 +143,10 @@ export default defineConfig({
               label: "AWS Services & IAM Roles",
               slug: "aws-services-and-roles",
             },
+            {
+              label: "Role-Based Access Control",
+              slug: "rbac",
+            },
             { label: "GovCloud Deployment", slug: "govcloud-deployment" },
             {
               label: "EU Region Model Support",
