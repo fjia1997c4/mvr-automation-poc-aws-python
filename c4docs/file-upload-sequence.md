@@ -8,14 +8,14 @@ sequenceDiagram
     participant UI as UploadDocumentPanel\nsrc/ui/src/components/upload-document/UploadDocumentPanel.tsx
     participant AppSync as AppSync GraphQL API\ntemplate.yaml + nested/appsync/template.yaml
     participant Upload as UploadResolver Lambda\nnested/appsync/src/lambda/upload_resolver/index.py
-    participant S3 as Input S3 Bucket
-    participant EB as EventBridge
+    participant S3 as Input S3 Bucket\ntemplate.yaml
+    participant EB as EventBridge\ntemplate.yaml
     participant Sender as QueueSender Lambda\nsrc/lambda/queue_sender/index.py
-    participant DDB as Tracking and Config DynamoDB
-    participant SQS as DocumentQueue
+    participant DDB as Tracking and Config DynamoDB\ntemplate.yaml + src/lambda/queue_sender/index.py + src/lambda/queue_processor/index.py
+    participant SQS as DocumentQueue\ntemplate.yaml
     participant Processor as QueueProcessor Lambda\nsrc/lambda/queue_processor/index.py
-    participant Work as Working S3 Bucket
-    participant SFN as Step Functions State Machine
+    participant Work as Working S3 Bucket\ntemplate.yaml + src/lambda/queue_processor/index.py
+    participant SFN as Step Functions State Machine\ntemplate.yaml + patterns/unified/template.yaml + src/lambda/queue_processor/index.py
 
     User->>UI: Choose file to upload
     UI->>AppSync: Mutation uploadDocument(fileName, contentType, prefix, version)
@@ -56,5 +56,6 @@ sequenceDiagram
   `template.yaml`,
   `nested/appsync/template.yaml`,
   `nested/appsync/src/lambda/upload_resolver/index.py`,
+  `patterns/unified/template.yaml`,
   `src/lambda/queue_sender/index.py`, and
   `src/lambda/queue_processor/index.py`.
