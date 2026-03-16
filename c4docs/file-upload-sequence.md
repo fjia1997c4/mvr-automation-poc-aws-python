@@ -6,7 +6,7 @@ This diagram shows the end-to-end upload flow implemented by the AppSync upload 
 sequenceDiagram
     actor User as User
     participant UI as UploadDocumentPanel\nsrc/ui/src/components/upload-document/UploadDocumentPanel.tsx
-    participant AppSync as AppSync GraphQL API
+    participant AppSync as AppSync GraphQL API\ntemplate.yaml + nested/appsync/template.yaml
     participant Upload as UploadResolver Lambda\nnested/appsync/src/lambda/upload_resolver/index.py
     participant S3 as Input S3 Bucket
     participant EB as EventBridge
@@ -53,6 +53,8 @@ sequenceDiagram
 - `QueueProcessor` compresses the document payload into the working bucket before starting the Step Functions workflow.
 - Source files shown in the diagram:
   `src/ui/src/components/upload-document/UploadDocumentPanel.tsx`,
+  `template.yaml`,
+  `nested/appsync/template.yaml`,
   `nested/appsync/src/lambda/upload_resolver/index.py`,
   `src/lambda/queue_sender/index.py`, and
   `src/lambda/queue_processor/index.py`.
