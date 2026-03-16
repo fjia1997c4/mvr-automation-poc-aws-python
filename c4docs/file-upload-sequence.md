@@ -51,6 +51,7 @@ sequenceDiagram
 - `UploadResolver` does not process the document contents. It only returns a signed upload target.
 - Actual ingestion starts from the S3 object-created event, then moves through `QueueSender`, `DocumentQueue`, and `QueueProcessor`.
 - `QueueProcessor` compresses the document payload into the working bucket before starting the Step Functions workflow.
+- S3 -> EventBridge rule (declared as CloudWatchEvent in SAM) -> QueueSender Lambda
 - Source files shown in the diagram:
   `src/ui/src/components/upload-document/UploadDocumentPanel.tsx`,
   `template.yaml`,
