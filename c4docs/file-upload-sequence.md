@@ -7,13 +7,13 @@ sequenceDiagram
     actor User as User
     participant UI as Web UI
     participant AppSync as AppSync GraphQL API
-    participant Upload as UploadResolver Lambda
+    participant Upload as UploadResolver Lambda\nnested/appsync/src/lambda/upload_resolver/index.py
     participant S3 as Input S3 Bucket
     participant EB as EventBridge
-    participant Sender as QueueSender Lambda
+    participant Sender as QueueSender Lambda\nsrc/lambda/queue_sender/index.py
     participant DDB as Tracking and Config DynamoDB
     participant SQS as DocumentQueue
-    participant Processor as QueueProcessor Lambda
+    participant Processor as QueueProcessor Lambda\nsrc/lambda/queue_processor/index.py
     participant Work as Working S3 Bucket
     participant SFN as Step Functions State Machine
 
@@ -51,3 +51,5 @@ sequenceDiagram
 - `UploadResolver` does not process the document contents. It only returns a signed upload target.
 - Actual ingestion starts from the S3 object-created event, then moves through `QueueSender`, `DocumentQueue`, and `QueueProcessor`.
 - `QueueProcessor` compresses the document payload into the working bucket before starting the Step Functions workflow.
+- Lambda source files shown in the diagram:
+  `nested/appsync/src/lambda/upload_resolver/index.py`, `src/lambda/queue_sender/index.py`, and `src/lambda/queue_processor/index.py`.
