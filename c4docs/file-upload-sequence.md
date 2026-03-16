@@ -5,7 +5,7 @@ This diagram shows the end-to-end upload flow implemented by the AppSync upload 
 ```mermaid
 sequenceDiagram
     actor User as User
-    participant UI as Web UI
+    participant UI as UploadDocumentPanel\nsrc/ui/src/components/upload-document/UploadDocumentPanel.tsx
     participant AppSync as AppSync GraphQL API
     participant Upload as UploadResolver Lambda\nnested/appsync/src/lambda/upload_resolver/index.py
     participant S3 as Input S3 Bucket
@@ -51,5 +51,8 @@ sequenceDiagram
 - `UploadResolver` does not process the document contents. It only returns a signed upload target.
 - Actual ingestion starts from the S3 object-created event, then moves through `QueueSender`, `DocumentQueue`, and `QueueProcessor`.
 - `QueueProcessor` compresses the document payload into the working bucket before starting the Step Functions workflow.
-- Lambda source files shown in the diagram:
-  `nested/appsync/src/lambda/upload_resolver/index.py`, `src/lambda/queue_sender/index.py`, and `src/lambda/queue_processor/index.py`.
+- Source files shown in the diagram:
+  `src/ui/src/components/upload-document/UploadDocumentPanel.tsx`,
+  `nested/appsync/src/lambda/upload_resolver/index.py`,
+  `src/lambda/queue_sender/index.py`, and
+  `src/lambda/queue_processor/index.py`.
