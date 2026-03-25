@@ -68,15 +68,15 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant S3 as Input S3 Bucket
-    participant EB as EventBridge
-    participant Sender as QueueSender Lambda
+    participant S3 as Input S3 Bucket\ntemplate.yaml
+    participant EB as EventBridge\ntemplate.yaml
+    participant Sender as QueueSender Lambda\nsrc/lambda/queue_sender/index.py
     participant Meta as Document.from_s3_event\nlib/idp_common_pkg/idp_common/models.py
-    participant DDB as Configuration / Document Store
-    participant SQS as DocumentQueue
-    participant Processor as QueueProcessor Lambda
-    participant Work as Working S3 Bucket
-    participant SFN as Step Functions
+    participant DDB as Configuration / Document Store\ntemplate.yaml + src/lambda/queue_sender/index.py + src/lambda/queue_processor/index.py
+    participant SQS as DocumentQueue\ntemplate.yaml
+    participant Processor as QueueProcessor Lambda\nsrc/lambda/queue_processor/index.py
+    participant Work as Working S3 Bucket\ntemplate.yaml + src/lambda/queue_processor/index.py
+    participant SFN as Step Functions\ntemplate.yaml + patterns/unified/template.yaml + src/lambda/queue_processor/index.py
 
     S3->>EB: Emit Object Created event\nsource=aws.s3, bucket, object key, time
     EB->>Sender: Invoke on matching InputBucket event
