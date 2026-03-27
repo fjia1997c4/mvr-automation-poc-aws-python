@@ -111,3 +111,76 @@ sequenceDiagram
 - The queue message body is the serialized `Document`; SQS message attributes add `EventType=DocumentQueued` and `ObjectKey=<input key>`.
 - `QueueProcessor` starts the workflow only after verifying the document was not already aborted and successfully incrementing the concurrency counter.
 - Before Step Functions starts, the processor compresses the document payload into the working bucket when `WORKING_BUCKET` is configured.
+
+#### Detail for "Deliver queued document JSON"
+- Producer Lambda: `src/lambda/queue_sender/index.py`
+  - `handler(...)` reads the EventBridge S3 event, extracts `detail.object.key`, and builds a `Document` via `Document.from_s3_event(...)`.
+  - The sender sets `document.status = QUEUED` and `document.queued_time = <utc iso timestamp>`.
+  - If `document.config_version` was not found in S3 metadata, the sender scans the configuration table for the active `Config#<version>` record and fills `document.config_version`.
+  - The sender persists the queued record with `document_service.create_document(document, expires_after=...)`.
+  - The actual SQS body is produced by `document.to_json()` and sent with message attributes:
+    - `EventType=DocumentQueued`
+    - `ObjectKey=<input_key>`
+
+- Shared model serialization: `lib/idp_common_pkg/idp_common/models.py`
+  - `Document.to_dict()` defines the JSON fields that go into SQS, including:
+    - `id`, `input_bucket`, `input_key`, `output_bucket`
+    - `status`, `initial_event_time`, `queued_time`
+    - `start_time`, `completion_time`, `workflow_execution_arn`
+    - `num_pages`, `pages`, `sections`
+    - `trace_id`, `config_version`, `errors`, `metering`
+  - `Document.to_json()` is just `json.dumps(self.to_dict(), default=str)`.
+  - At queue-send time, the document is still a lightweight queued record, so `pages` and `sections` are usually empty.
+
+- Queue delivery target: `src/lambda/queue_processor/index.py`
+  - `template.yaml` configures `QueueProcessor` as an SQS-triggered Lambda on `DocumentQueue` with:
+    - `BatchSize: 50`
+    - `MaximumBatchingWindowInSeconds: 1`
+    - `FunctionResponseTypes: ReportBatchItemFailures`
+  - When SQS invokes the Lambda, each message arrives in `event["Records"]`, and the serialized document is in `record["body"]`.
+
+- Consumer deserialization and validation: `src/lambda/queue_processor/index.py`
+  - `handler(...)` loops over `event["Records"]` and calls `process_message(record)`.
+  - `process_message(...)` parses `record["body"]` with `json.loads(...)`.
+  - It reconstructs the document using `Document.load_document(message_data, working_bucket, logger)`.
+  - `Document.load_document(...)` supports both:
+    - normal JSON document bodies
+    - compressed document references with `{"compressed": true, "s3_uri": ...}`
+  - The processor then re-reads the current document state with `document_service.get_document(object_key)` and exits early if the document was already marked `ABORTED`.
+
+- Concurrency gate before workflow start: `src/lambda/queue_processor/index.py`
+  - `update_counter(increment=True)` updates the DynamoDB concurrency counter item `counter_id=workflow_counter`.
+  - The increment is conditional on `active_count < MAX_CONCURRENT`.
+  - If the condition fails, `process_message(...)` returns the message ID in `batchItemFailures`, so SQS retries the message later instead of dropping it.
+
+- Workflow start path: `src/lambda/queue_processor/index.py`
+  - `start_workflow(document)` changes the in-memory document to:
+    - `status = RUNNING`
+    - `start_time = <utc iso timestamp>`
+  - If `WORKING_BUCKET` is configured, it calls `document.serialize_document(working_bucket, "workflow_start", logger)`.
+  - `Document.serialize_document(...)` in `lib/idp_common_pkg/idp_common/models.py` always compresses here because the default threshold is `0KB`.
+  - Compression stores the full document JSON in S3 and returns a lightweight wrapper like:
+    - `document_id`
+    - `s3_uri`
+    - `timestamp`
+    - `status`
+    - `num_pages`
+    - `sections`
+    - `compressed=true`
+  - The processor reads merged config via `ConfigurationManager.get_merged_configuration(config_version)` and injects routing flags into the Step Functions input:
+    - `use_bda`
+    - `bda_project_arn` when applicable
+  - Step Functions is started with:
+    - `sfn.start_execution(input=json.dumps({ "document": compressed_document }))`
+
+- Final persistence after successful delivery: `src/lambda/queue_processor/index.py`
+  - After `start_execution(...)` succeeds, the processor writes the updated document back through `document_service.update_document(document)`.
+  - That persists at least:
+    - `status=RUNNING`
+    - `start_time`
+    - `workflow_execution_arn`
+  - If workflow start fails after the concurrency increment, the processor decrements the counter and reports the message as failed so SQS can retry.
+
+- Document service abstraction used on both sides: `lib/idp_common_pkg/idp_common/docs_service.py`
+  - `create_document_service()` selects the backing implementation from `DOCUMENT_TRACKING_MODE`.
+  - In this flow, both `queue_sender` and `queue_processor` call the same abstraction for `create_document(...)`, `get_document(...)`, and `update_document(...)`.
