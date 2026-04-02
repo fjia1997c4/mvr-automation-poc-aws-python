@@ -114,3 +114,66 @@ flowchart TD
 | --- | --- | --- | --- |
 | `RuleValidationStep` | Task | `RuleValidationSectionComplete` | Runs rule validation for the current section. |
 | `RuleValidationSectionComplete` | Pass | End | Ends the per-section rule validation iterator. |
+
+## OCRStep Detail
+
+`OCRStep` is the first task in the OCR pipeline branch. In the state machine definition, it is a `Task` state that invokes `${OCRFunctionArn}`, passes `$$.Execution.Id` as `execution_arn`, passes `$.document` as `document`, stores the response in `$.OCRResult`, and then transitions to `ClassificationStep`.
+
+The ARN placeholder is supplied by the SAM state machine definition in `patterns/unified/template.yaml`:
+
+- `OCRFunctionArn: !GetAtt OCRFunction.Arn`
+
+That means `OCRStep` invokes the Lambda resource with logical ID `OCRFunction`.
+
+### `OCRFunction`
+
+`OCRFunction` is defined in `patterns/unified/template.yaml` as an `AWS::Serverless::Function`. It does not set an explicit `FunctionName`, so CloudFormation generates the deployed physical Lambda name. The same logical ID is also what `sam local invoke OCRFunction` uses during local testing.
+
+Key configuration:
+
+- Packaging: container image Lambda (`PackageType: Image`)
+- Image: `${ECRRepository.RepositoryUri}:ocr-function-${ImageVersion}`
+- Entrypoint: `index.handler`
+- Architecture: `arm64`
+- Timeout: `900` seconds
+- Memory: `4096` MB
+- Tracing: `Active`
+- Depends on: `DockerBuildRun`
+- SAM build metadata: `SkipBuild: True`
+
+Environment variables:
+
+- `METRIC_NAMESPACE`
+- `MAX_WORKERS=20`
+- `CONFIGURATION_TABLE_NAME`
+- `LOG_LEVEL`
+- `APPSYNC_API_URL`
+- `TRACKING_TABLE`
+- `DOCUMENT_TRACKING_MODE`
+- `WORKING_BUCKET`
+
+Primary permissions:
+
+- CloudWatch Logs and basic Lambda execution
+- ECR access for the image-based function
+- S3 read/write access for input, working, and output buckets
+- DynamoDB CRUD access for configuration and tracking tables
+- KMS encrypt/decrypt on the customer-managed key
+- Textract access:
+  - `textract:DetectDocumentText`
+  - `textract:AnalyzeDocument`
+- Bedrock model invocation permissions
+- `lambda:InvokeFunction` for `GENAIIDP-*` functions
+- Conditional AppSync GraphQL mutation access when AppSync is enabled
+
+Logging:
+
+- Dedicated log group: `/${AWS::StackName}/lambda/OCRFunction`
+
+Trace summary:
+
+- `OCRStep` in `patterns/unified/statemachine/workflow.asl.json`
+- `${OCRFunctionArn}` from state machine `DefinitionSubstitutions`
+- `!GetAtt OCRFunction.Arn`
+- `OCRFunction` resource in `patterns/unified/template.yaml`
+
