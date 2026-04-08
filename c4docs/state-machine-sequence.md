@@ -115,7 +115,7 @@ flowchart TD
 | `RuleValidationStep` | Task | `RuleValidationSectionComplete` | Runs rule validation for the current section. |
 | `RuleValidationSectionComplete` | Pass | End | Ends the per-section rule validation iterator. |
 
-## OCRStep Detail
+## OCR-Branch - OCRStep Detail
 
 `OCRStep` is the first task in the OCR pipeline branch. In the state machine definition, it is a `Task` state that invokes `${OCRFunctionArn}`, passes `$$.Execution.Id` as `execution_arn`, passes `$.document` as `document`, stores the response in `$.OCRResult`, and then transitions to `ClassificationStep`.
 
@@ -177,7 +177,7 @@ Trace summary:
 - `!GetAtt OCRFunction.Arn`
 - `OCRFunction` resource in `patterns/unified/template.yaml`
 
-## ClassificationStep Detail
+## OCR-Branch - ClassificationStep Detail
 
 `ClassificationStep` is the second task in the OCR pipeline branch. In the state machine definition, it is a `Task` state that invokes `${ClassificationFunctionArn}`, passes `$$.Execution.Id` as `execution_arn`, passes `$.OCRResult` as `OCRResult`, stores the response in `$.ClassificationResult`, and then transitions to `ProcessSections`.
 
@@ -279,7 +279,7 @@ Trace summary:
 - `ClassificationFunction` resource in `patterns/unified/template.yaml`
 - Handler implementation in `patterns/unified/src/classification_function/index.py`
 
-## ProcessSections Detail
+## OCR-Branch - ProcessSections Detail
 
 `ProcessSections` is the section-level fan-out stage for the OCR pipeline. In the state machine definition it is a `Map` state with:
 
