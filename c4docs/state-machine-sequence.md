@@ -412,7 +412,7 @@ By the time `ProcessSections` finishes successfully:
 
 The next state, `Pipeline_ProcessResultsStep`, is responsible for collapsing those per-section outputs back into the shared pipeline result shape used by the rest of the workflow.
 
-## Pipeline_ProcessResultsStep Detail
+##  OCR-Branch - Pipeline_ProcessResultsStep Detail
 
 `Pipeline_ProcessResultsStep` is the post-map consolidation task for the OCR pipeline branch. In the state machine definition, it is a `Task` state that invokes `${PipelineProcessResultsLambdaArn}`, passes:
 
@@ -630,3 +630,288 @@ Trace summary:
 - `!GetAtt ProcessResultsFunction.Arn`
 - `ProcessResultsFunction` resource in `patterns/unified/template.yaml`
 - Handler implementation in `patterns/unified/src/processresults_function/index.py`
+
+##  BDA-Branch - BDA_CheckExistingData Detail
+
+`BDA_CheckExistingData` is the first decision point inside the BDA branch. In the state machine definition, it is a `Choice` state whose job is to detect reprocessing scenarios where the incoming `document` already contains page and section structure, so the workflow can skip the expensive BDA invocation.
+
+The state comment in `patterns/unified/statemachine/workflow.asl.json` is:
+
+- `Check if document already has pages/sections data (reprocessing scenario)`
+
+### Choice Logic
+
+`BDA_CheckExistingData` has two explicit skip conditions and one default path.
+
+It routes to `BDA_ProcessResultsSkip` when either of these is true:
+
+1. The document already has pages and `sections[0]` is a string
+2. The document already has pages and `sections[0].section_id` is present
+
+In ASL terms, those branches are:
+
+```json
+{
+  "And": [
+    { "Variable": "$.document.num_pages", "NumericGreaterThan": 0 },
+    { "Variable": "$.document.sections[0]", "IsString": true }
+  ],
+  "Next": "BDA_ProcessResultsSkip"
+}
+```
+
+and:
+
+```json
+{
+  "And": [
+    { "Variable": "$.document.num_pages", "NumericGreaterThan": 0 },
+    { "Variable": "$.document.sections[0].section_id", "IsPresent": true }
+  ],
+  "Next": "BDA_ProcessResultsSkip"
+}
+```
+
+If neither branch matches, the default path is:
+
+- `BDA_InvokeDataAutomation`
+
+### Why There Are Two Existing-Data Shapes
+
+The choice state accepts two section representations because the workflow may be resumed or re-entered with different document shapes:
+
+- `sections` as string values, effectively section identifiers
+- `sections` as full section objects containing fields such as `section_id`
+
+Both are treated as evidence that prior processing has already produced section structure, so BDA does not need to be called again.
+
+The `num_pages > 0` guard matters too. A document with empty or uninitialized page metadata does not qualify for the skip path even if `sections` is present in some partial form.
+
+### Downstream Skip Path
+
+When `BDA_CheckExistingData` chooses the skip route, the next state is `BDA_ProcessResultsSkip`, which invokes the same Lambda used for normal BDA result processing, but with a synthetic event:
+
+- `skip_bda: true`
+- `document` copied from `$.document`
+- `execution_arn` copied from `$$.Execution.Id`
+- `output_bucket` injected from `${OutputBucket}`
+
+That call lands in `patterns/unified/src/bda_processresults_function/index.py`, where the handler immediately dispatches to:
+
+- `handle_skip_bda(event)` when `event.get("skip_bda")` is true
+
+Inside `handle_skip_bda(...)`, the function:
+
+- loads the existing `Document` from the event
+- reloads configuration using `document.config_version` when present
+- sets document status to `POSTPROCESSING`
+- preserves any current reviewer-updated `hitl_status` from the tracking store
+- checks existing `section.confidence_threshold_alerts` to decide whether HITL is still triggered
+- adds skip metering under `BDAProject/bda/documents-skip`
+- returns the same shared result contract used by the rest of the workflow:
+  - `document`
+  - `hitl_triggered`
+  - `rule_validation_enabled`
+  - `bda_response_count`
+  - `skip_bda`
+
+So `BDA_CheckExistingData` is not just a performance optimization. It is the gate that allows BDA-branch reprocessing to reuse already-materialized document structure while still re-entering the common post-processing flow cleanly.
+
+### Operational Meaning
+
+In practice, `BDA_CheckExistingData` answers this question:
+
+- “Do we already have enough structured document data to skip a fresh BDA run?”
+
+If the answer is yes:
+
+- the workflow skips `BDA_InvokeDataAutomation`
+- avoids another external BDA job submission
+- reuses existing sections and page metadata
+- continues into the same HITL and rule-validation gates as a normal BDA run
+
+If the answer is no:
+
+- the workflow invokes BDA asynchronously through `BDA_InvokeDataAutomation`
+
+Trace summary:
+
+- `BDA_CheckExistingData` in `patterns/unified/statemachine/workflow.asl.json`
+- `BDA_ProcessResultsSkip` in `patterns/unified/statemachine/workflow.asl.json`
+- `handle_skip_bda(...)` in `patterns/unified/src/bda_processresults_function/index.py`
+
+##  BDA-Branch - BDA_InvokeDataAutomation Detail
+
+`BDA_InvokeDataAutomation` is the task state that starts the Bedrock Data Automation job for the BDA branch. Unlike the OCR pipeline tasks, it is not a normal synchronous Lambda invocation. In the state machine definition it uses the Step Functions callback integration:
+
+- `Resource: arn:aws:states:::lambda:invoke.waitForTaskToken`
+
+That means Step Functions invokes a Lambda, passes in a callback token, and then pauses this state until some later component calls `SendTaskSuccess` or `SendTaskFailure` with that same token.
+
+### State Definition
+
+The state passes this payload to the Lambda:
+
+- `taskToken` from `$$.Task.Token`
+- `execution_arn` from `$$.Execution.Id`
+- `working_bucket` from `${WorkingBucket}`
+- `BDAProjectArn` from `$.document.bda_project_arn`
+- `document` from `$.document`
+
+It stores the eventual callback result in:
+
+- `$.BDAResponse`
+
+On success, the next state is:
+
+- `BDA_ProcessResultsStep`
+
+It also has:
+
+- a retry policy for transient Lambda and throttling errors
+- a `Catch` on `States.ALL` that routes to `FailState`
+
+So operationally, this state is the asynchronous boundary between the Step Functions workflow and the external BDA job lifecycle.
+
+### Lambda Wiring
+
+The ARN placeholder comes from the SAM template:
+
+- `InvokeBDALambdaArn: !GetAtt InvokeBDAFunction.Arn`
+
+That means `BDA_InvokeDataAutomation` invokes the Lambda resource with logical ID `InvokeBDAFunction`.
+
+`InvokeBDAFunction` is defined in `patterns/unified/template.yaml` as an image-based Lambda with:
+
+- Image: `${ECRRepository.RepositoryUri}:bda-invoke-function-${ImageVersion}`
+- Architecture: `arm64`
+- Timeout: `900` seconds
+- Memory: `4096` MB
+- Tracing: `Active`
+
+Environment variables:
+
+- `TRACKING_TABLE`
+- `METRIC_NAMESPACE`
+- `MAX_WORKERS=20`
+- `LOG_LEVEL`
+
+Primary permissions:
+
+- S3 read access for the input bucket
+- S3 read/write access for working and output buckets
+- DynamoDB CRUD access for the tracking table
+- KMS encrypt/decrypt on the customer-managed key
+- `bedrock:InvokeDataAutomationAsync` on data automation project/profile resources
+
+Logging:
+
+- Dedicated log group: `/${AWS::StackName}/lambda/InvokeBDAFunction`
+
+### Runtime Behavior Of `InvokeBDAFunction`
+
+The handler implementation lives in `patterns/unified/src/bda_invoke_function/index.py`. At runtime it:
+
+- loads the incoming `document` using `Document.load_document(...)`
+- extracts `input_bucket`, `object_key`, `BDAProjectArn`, `working_bucket`, and `taskToken`
+- checks for an intelligent skip case before invoking BDA
+- otherwise records the Step Functions task token in DynamoDB
+- invokes Bedrock Data Automation asynchronously
+- returns invocation metadata to the callback integration
+
+The key helper is:
+
+- `invoke_data_automation(data_project_arn, input_s3_uri, output_s3_uri)`
+
+That function wraps `BdaService.invoke_data_automation_async(...)` with explicit retry/backoff for API-side throttling errors such as:
+
+- `ThrottlingException`
+- `ServiceQuotaExceededException`
+- `RequestLimitExceeded`
+- `TooManyRequestsException`
+- `InternalServerException`
+
+This is separate from the Step Functions retry policy. The Lambda retries the Bedrock API call locally first, and only if that still fails does the state-level retry policy apply.
+
+### Task Token Tracking
+
+Before starting the async BDA job, `InvokeBDAFunction` writes a tracking record into DynamoDB:
+
+```python
+tracking_item = {
+    'PK': f"tasktoken#{object_key}",
+    'SK': 'none',
+    'TaskToken': task_token,
+    'TaskTokenTime': ...,
+    'ExpiresAfter': ...
+}
+```
+
+This is the bridge between the initial workflow invocation and the later job-completion callback. The object key becomes the lookup key that the completion handler uses to recover the original Step Functions task token.
+
+### Built-In Skip Inside Invoke
+
+There is a second skip guard inside `InvokeBDAFunction` itself.
+
+If the incoming document already has sections and any section has `extraction_result_uri`, the function concludes that extraction data already exists and immediately calls:
+
+- `stepfunctions.send_task_success(...)`
+
+with a synthetic output containing:
+
+- `metadata.skipped = true`
+- input/output location metadata
+- the serialized document
+
+This short-circuits the callback wait and allows the workflow to continue without launching a new BDA job. It exists as a defense-in-depth optimization for HITL reprocessing and resume flows, even though `BDA_CheckExistingData` is already intended to catch the main reprocessing scenarios earlier in the branch.
+
+### Completion Callback Path
+
+The state remains paused after the initial invoke until some later component reports completion using the stored token.
+
+That callback is handled by `patterns/unified/src/bda_completion_function/index.py`, which:
+
+- receives a BDA completion event
+- extracts `detail.input_s3_object.name` as the `object_key`
+- loads the task token from DynamoDB using `tasktoken#{object_key}`
+- calls `stepfunctions.send_task_success(...)` when `job_status == "SUCCESS"`
+- calls `stepfunctions.send_task_failure(...)` otherwise
+
+On success, the callback payload looks like:
+
+```json
+{
+  "status": "SUCCESS",
+  "job_detail": { "...": "BDA completion event detail" }
+}
+```
+
+That callback output becomes `$.BDAResponse`, which is what `BDA_ProcessResultsStep` consumes next.
+
+### Failure Semantics
+
+`BDA_InvokeDataAutomation` has two layers of failure handling:
+
+- Step-level retry for transient Lambda and throttling failures
+- A `Catch` on `States.ALL` to `FailState`
+
+That means if the invoke Lambda fails repeatedly, or the callback reports failure through `SendTaskFailure`, the workflow does not continue to `BDA_ProcessResultsStep`. It transitions to `FailState`.
+
+This is different from many other OCR-branch tasks, which often rely only on retries and let the execution fail naturally. Here, the failure path is explicit in the ASL.
+
+### Operational Result
+
+By the time `BDA_InvokeDataAutomation` completes successfully, one of two things has happened:
+
+- a real BDA async job finished and its completion event called back into Step Functions
+- the invoke Lambda determined the document already had extraction data and sent immediate task success without launching BDA
+
+In either case, the next state receives a normalized `$.BDAResponse` payload and the workflow advances to `BDA_ProcessResultsStep`.
+
+Trace summary:
+
+- `BDA_InvokeDataAutomation` in `patterns/unified/statemachine/workflow.asl.json`
+- `${InvokeBDALambdaArn}` from state machine `DefinitionSubstitutions`
+- `InvokeBDAFunction` resource in `patterns/unified/template.yaml`
+- Handler implementation in `patterns/unified/src/bda_invoke_function/index.py`
+- Callback handler in `patterns/unified/src/bda_completion_function/index.py`
