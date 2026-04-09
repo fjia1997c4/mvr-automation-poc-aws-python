@@ -915,3 +915,249 @@ Trace summary:
 - `InvokeBDAFunction` resource in `patterns/unified/template.yaml`
 - Handler implementation in `patterns/unified/src/bda_invoke_function/index.py`
 - Callback handler in `patterns/unified/src/bda_completion_function/index.py`
+
+##  BDA-Branch - BDA_ProcessResultsStep Detail
+
+`BDA_ProcessResultsStep` is the BDA branch consolidation task. It takes the normalized callback output from `BDA_InvokeDataAutomation`, loads the BDA output artifacts, reconstructs the document/page/section model, computes HITL state, and then hands the workflow back to the shared post-processing gates.
+
+In the state machine definition, it is a `Task` state that invokes `${BDAProcessResultsLambdaArn}`, passes:
+
+- `$$.Execution.Id` as `execution_arn`
+- `${OutputBucket}` as `output_bucket`
+- `$.BDAResponse` as `BDAResponse`
+
+The state stores the Lambda response in `$.Result` and then transitions to:
+
+- `CheckHITLRequired`
+
+Like the other processing tasks, it has a retry policy for transient Lambda and throttling failures:
+
+- Errors: `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `Lambda.TooManyRequestsException`, `ServiceQuotaExceededException`, `ThrottlingException`, `ProvisionedThroughputExceededException`, `RequestLimitExceeded`, `ServiceUnavailableException`
+- `IntervalSeconds: 10`
+- `MaxAttempts: 8`
+- `BackoffRate: 2.5`
+
+Unlike `BDA_InvokeDataAutomation`, this state does not define its own `Catch` branch. If retries are exhausted, the execution fails at this state.
+
+### Lambda Wiring
+
+The ARN placeholder comes from the SAM template:
+
+- `BDAProcessResultsLambdaArn: !GetAtt BDAProcessResultsFunction.Arn`
+
+That means `BDA_ProcessResultsStep` invokes the Lambda resource with logical ID `BDAProcessResultsFunction`.
+
+`BDAProcessResultsFunction` is defined in `patterns/unified/template.yaml` as an image-based Lambda with:
+
+- Image: `${ECRRepository.RepositoryUri}:bda-processresults-function-${ImageVersion}`
+- Architecture: `arm64`
+- Timeout: `900` seconds
+- Memory: `4096` MB
+- Tracing: `Active`
+
+Environment variables:
+
+- `METRIC_NAMESPACE`
+- `LOG_LEVEL`
+- `APPSYNC_API_URL`
+- `TRACKING_TABLE`
+- `DOCUMENT_TRACKING_MODE`
+- `DB_NAME`
+- `WORKING_BUCKET`
+- `CONFIGURATION_TABLE_NAME`
+
+Primary permissions:
+
+- S3 read access for the input bucket
+- S3 read/write access for the working and output buckets
+- DynamoDB CRUD access for the BDA metadata, configuration, and tracking tables
+- KMS encrypt/decrypt on the customer-managed key
+- Conditional AppSync query/mutation access when AppSync is enabled
+- SSM parameter access
+- Bedrock read/list access for BDA projects and blueprints
+
+Logging:
+
+- Dedicated log group: `/${AWS::StackName}/lambda/BDAProcessResultsFunction`
+
+### Runtime Entry Paths
+
+The handler implementation lives in `patterns/unified/src/bda_processresults_function/index.py`. It has two entry modes:
+
+- normal BDA result processing, when the event contains `BDAResponse`
+- skip/reprocessing handling, when the event contains `skip_bda: true`
+
+The skip path is already described in the `BDA_CheckExistingData` section. For `BDA_ProcessResultsStep`, the main path is the normal BDA-response flow.
+
+The handler accepts either:
+
+- a single BDA response object
+- an array of BDA response objects, used when blueprint changes result in multiple BDA responses
+
+It normalizes that into `bda_responses` and processes them uniformly.
+
+### Base Document Setup
+
+At the start of the normal path, the function:
+
+- extracts the input bucket and object key from the first BDA response
+- creates a new `Document` with:
+  - `id = object_key`
+  - `input_bucket`
+  - `input_key = object_key`
+  - `output_bucket`
+  - `status = POSTPROCESSING`
+  - `workflow_execution_arn`
+- fetches the existing tracked document to recover `config_version`
+- reloads configuration using that version
+- reads `config.assessment.default_confidence_threshold`
+- reloads any current reviewer-updated `hitl_status` from the tracking store
+- persists the new document shell at `POSTPROCESSING`
+
+This mirrors the OCR branch’s process-results step: the function deliberately preserves review state that may already have been changed by a human during reprocessing.
+
+### Page And Section Reconstruction
+
+For each normalized BDA response, the function resolves the BDA output location:
+
+- standard callback format: from `BDAResponse.job_detail.output_s3_location`
+- blueprint-change format: by calling `get_data_automation_job(jobId=...)` to discover the output S3 location
+
+Once it knows the BDA result bucket/prefix, it does two main reconstruction passes:
+
+- `process_bda_sections(...)`
+- `process_bda_pages(...)`
+
+Operationally, those helpers rebuild the document from the BDA output artifacts by:
+
+- materializing sections
+- materializing pages
+- attaching extracted-result locations and related metadata
+
+The function also attempts to create page preview images once per document via `create_pdf_page_images(...)`. Failures there are logged as warnings and treated as non-critical so they do not mark the document as failed.
+
+### Confidence Alerts And HITL Metadata
+
+This step is where BDA results are converted into the same HITL-oriented shape used later in the workflow.
+
+The main helper is `process_segments(...)`, which iterates segment metadata from `job_metadata.json`. For each custom-output segment it:
+
+- loads `custom_output_path`
+- reads `explainability_info`
+- derives page-specific key/value details
+- calls `create_confidence_threshold_alerts(...)`
+- finds the matching document section by page IDs
+- sets `section.confidence_threshold_alerts`
+
+The alert creation rule is simple and explicit:
+
+```python
+if confidence < confidence_threshold:
+    alerts.append({
+        "attribute_name": kv_entry.get("key", ""),
+        "confidence": confidence,
+        "confidence_threshold": confidence_threshold,
+    })
+```
+
+So a section’s alerts become non-empty when BDA explainability contains key/value confidence scores below the configured threshold.
+
+`process_segments(...)` also creates `HitlMetadata` records and appends them to `document.hitl_metadata`. HITL is triggered when:
+
+- the section has one or more confidence-threshold alerts, or
+- the matched blueprint confidence is itself below the threshold
+
+For non-custom-output segments, the function still creates `HitlMetadata`, but standard-output segments currently do not populate section confidence alerts in the same way.
+
+### Document-Level HITL State
+
+After segment processing, the function promotes per-section review signals into document-level state.
+
+If `hitl_triggered` is true and the document has sections, it:
+
+- preserves existing terminal review states
+- otherwise sets `document.hitl_status = "PendingReview"`
+- sets `document.hitl_triggered = True`
+- sets `document.hitl_sections_pending` to all section IDs
+- resets `document.hitl_sections_completed` to `[]`
+
+The preservation guard is:
+
+- `Review Completed`
+- `Review Skipped`
+- `Completed`
+- `Skipped`
+
+So reruns do not overwrite a document that has already completed or skipped human review.
+
+The function also computes:
+
+- `document.confidence_alert_count = sum(len(section.confidence_threshold_alerts) for section in document.sections)`
+
+### Metering And Metrics
+
+Once sections and pages are rebuilt, the function computes:
+
+- total pages
+- custom pages that belong to custom BDA segments
+- standard pages not covered by custom segments
+
+It then emits CloudWatch metrics:
+
+- `ProcessedDocuments`
+- `ProcessedPages`
+- `ProcessedCustomPages`
+- `ProcessedStandardPages`
+
+And stores document metering as:
+
+- `BDAProject/bda/documents-custom`
+- `BDAProject/bda/documents-standard`
+
+### Success Output Shape
+
+On success, the function returns:
+
+```json
+{
+  "document": { "...": "serialized consolidated BDA document" },
+  "hitl_triggered": true,
+  "rule_validation_enabled": false,
+  "bda_response_count": 1
+}
+```
+
+The exact values vary by document and config, but the response contract is stable:
+
+- `document` is the consolidated serialized document
+- `hitl_triggered` drives `CheckHITLRequired`
+- `rule_validation_enabled` drives `CheckRuleValidationEnabled`
+- `bda_response_count` records how many BDA responses were collapsed
+
+### Rule Validation Gating
+
+Like the OCR branch process-results step, this function decides whether downstream rule validation should run.
+
+It computes:
+
+- `rule_validation_enabled = is_rule_validation_enabled(input_config_version)`
+
+That flag is returned in the response and later consumed by `CheckRuleValidationEnabled`.
+
+### Operational Result
+
+By the time `BDA_ProcessResultsStep` finishes successfully:
+
+- the raw BDA output has been converted into the shared `Document` model
+- `document.sections` and page metadata are reconstructed
+- page preview images have been attempted
+- section-level confidence alerts have been derived from BDA explainability data
+- document-level HITL metadata and pending-review state have been computed
+- rule-validation eligibility has been computed for the next branch
+
+Trace summary:
+
+- `BDA_ProcessResultsStep` in `patterns/unified/statemachine/workflow.asl.json`
+- `${BDAProcessResultsLambdaArn}` from state machine `DefinitionSubstitutions`
+- `BDAProcessResultsFunction` resource in `patterns/unified/template.yaml`
+- Handler implementation in `patterns/unified/src/bda_processresults_function/index.py`
