@@ -139,7 +139,7 @@ sequenceDiagram
     Hook->>Amplify: client.graphql({query: listDocuments, variables})<br/>(use-graphql-api.ts:22 — generateClient())
     Amplify->>Amplify: Attach header<br/>Authorization: <idToken JWT>
     Amplify->>AppSync: POST https://<api-id>.appsync-api.<region>.amazonaws.com/graphql
-    Note right of AppSync: AuthenticationType:<br/>AMAZON_COGNITO_USER_POOLS<br/>(template.yaml:6515)<br/>AppSync verifies JWT signature<br/>against User Pool JWKS +<br/>checks aud==UserPoolClientId<br/>and exp.<br/>Schema type has<br/>@aws_cognito_user_pools directive.
+    Note right of AppSync: AuthenticationType:<br/>AMAZON_COGNITO_USER_POOLS<br/>(template.yaml:6515)<br/>AppSync verifies JWT signature<br/>against User Pool JWKS +<br/>checks aud==UserPoolClientId<br/>and exp.<br/>Schema type has<br/>&#64;aws_cognito_user_pools directive.
 
     AppSync->>LambdaR: Invoke resolver with<br/>event.identity.claims = {<br/>  sub, email, cognito:username,<br/>  cognito:groups: [...]<br/>}
     LambdaR->>LambdaR: caller = _get_caller_identity(event)<br/>(index.py:57-78)
@@ -161,7 +161,7 @@ sequenceDiagram
     Browser->>Hook: getDocumentDetailsFromIds([objectKey])
     Hook->>Amplify: client.graphql({query: getDocument, variables})
     Amplify->>AppSync: POST /graphql (idToken)
-    Note right of AppSync: Direct DynamoDB VTL resolver<br/>nested/appsync/template.yaml:3678-3696<br/>VTL may reference $ctx.identity.claims<br/>for conditional auth; read path here<br/>relies on schema-level<br/>@aws_cognito_user_pools gate.
+    Note right of AppSync: Direct DynamoDB VTL resolver<br/>nested/appsync/template.yaml:3678-3696<br/>VTL may reference $ctx.identity.claims<br/>for conditional auth; read path here<br/>relies on schema-level<br/>&#64;aws_cognito_user_pools gate.
     AppSync->>VTL: GetItem PK=doc#<objectKey>, SK=none
     VTL->>DDB: GetItem
     DDB-->>VTL: item
