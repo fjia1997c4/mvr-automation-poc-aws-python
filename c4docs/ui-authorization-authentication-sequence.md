@@ -21,7 +21,7 @@ sequenceDiagram
     participant App as App.tsx<br/>(Authenticator.Provider)
     participant Routes as Routes.tsx<br/>(guard)
     participant Unauth as UnauthRoutes.tsx<br/>AutoLoginOrAuthenticator
-    participant Amplify as AWS Amplify<br/>@aws-amplify/ui-react
+    participant Amplify as AWS Amplify<br/>(aws-amplify/ui-react)
     participant Cognito as Cognito<br/>User Pool
     participant Hosted as Cognito<br/>Hosted UI / OAuth
     participant IdP as External IdP<br/>(SAML/OIDC)<br/>[optional]
@@ -139,7 +139,7 @@ sequenceDiagram
     Hook->>Amplify: client.graphql({query: listDocuments, variables})<br/>(use-graphql-api.ts:22 — generateClient())
     Amplify->>Amplify: Attach header<br/>Authorization: <idToken JWT>
     Amplify->>AppSync: POST https://<api-id>.appsync-api.<region>.amazonaws.com/graphql
-    Note right of AppSync: AuthenticationType:<br/>AMAZON_COGNITO_USER_POOLS<br/>(template.yaml:6515)<br/>AppSync verifies JWT signature<br/>against User Pool JWKS +<br/>checks aud==UserPoolClientId<br/>and exp.<br/>Schema type has<br/>&#64;aws_cognito_user_pools directive.
+    Note right of AppSync: AuthenticationType:<br/>AMAZON_COGNITO_USER_POOLS<br/>(template.yaml:6515)<br/>AppSync verifies JWT signature<br/>against User Pool JWKS +<br/>checks aud==UserPoolClientId<br/>and exp.<br/>Schema type carries the<br/>aws_cognito_user_pools directive.
 
     AppSync->>LambdaR: Invoke resolver with<br/>event.identity.claims = {<br/>  sub, email, cognito:username,<br/>  cognito:groups: [...]<br/>}
     LambdaR->>LambdaR: caller = _get_caller_identity(event)<br/>(index.py:57-78)
@@ -161,7 +161,7 @@ sequenceDiagram
     Browser->>Hook: getDocumentDetailsFromIds([objectKey])
     Hook->>Amplify: client.graphql({query: getDocument, variables})
     Amplify->>AppSync: POST /graphql (idToken)
-    Note right of AppSync: Direct DynamoDB VTL resolver<br/>nested/appsync/template.yaml:3678-3696<br/>VTL may reference $ctx.identity.claims<br/>for conditional auth; read path here<br/>relies on schema-level<br/>&#64;aws_cognito_user_pools gate.
+    Note right of AppSync: Direct DynamoDB VTL resolver<br/>nested/appsync/template.yaml:3678-3696<br/>VTL may reference ctx.identity.claims<br/>for conditional auth. Read path here<br/>relies on the schema-level<br/>aws_cognito_user_pools gate.
     AppSync->>VTL: GetItem PK=doc#<objectKey>, SK=none
     VTL->>DDB: GetItem
     DDB-->>VTL: item
@@ -174,7 +174,7 @@ sequenceDiagram
     Upload->>Amplify: client.graphql({ query: uploadDocument,<br/>variables: {fileName, contentType, prefix,<br/>bucket: InputBucket, version} })<br/>(UploadDocumentPanel.tsx:107-116)
     Amplify->>AppSync: POST /graphql (idToken)
     AppSync->>UploadR: Invoke resolver with<br/>event.identity.claims
-    Note right of UploadR: Resolver enforces:<br/>canWrite (Admin or Author) before<br/>generating presigned POST;<br/>Viewer/Reviewer → Unauthorized
+    Note right of UploadR: Resolver enforces<br/>canWrite (Admin or Author) before<br/>generating presigned POST.<br/>Viewer/Reviewer → Unauthorized
     UploadR->>UploadR: s3.generate_presigned_post(<br/>Bucket=InputBucket, Key=<prefix>/<fileName>,<br/>Conditions=[content-type, size])
     UploadR-->>AppSync: { presignedUrl (JSON-encoded POST data),<br/>objectKey, usePostMethod:"true" }
     AppSync-->>Upload: response
@@ -186,7 +186,7 @@ sequenceDiagram
     Upload->>Browser: status: "success"
 
     Note over Browser,S3: Phase E — Reading S3 objects from the UI (e.g. preview images)
-    Note over Browser,S3: Uses temp Identity Pool credentials<br/>(CognitoAuthorizedRole) to sign<br/>GET requests via S3RequestPresigner.<br/>See generate-s3-presigned-url.ts:46-133;<br/>role permissions at<br/>template.yaml:6306-6320.
+    Note over Browser,S3: Uses temp Identity Pool credentials<br/>(CognitoAuthorizedRole) to sign<br/>GET requests via S3RequestPresigner.<br/>See generate-s3-presigned-url.ts:46-133,<br/>role permissions at<br/>template.yaml:6306-6320.
 ```
 
 ### Two ways AppSync validates a request
